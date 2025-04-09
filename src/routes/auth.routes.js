@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const moment = require('moment');
+//const moment = require('moment');
 const authController = require('../controllers/auth.controller');
 const middleware = require('./middleware');
 
@@ -17,13 +17,35 @@ router.post('/register', async (req, res) => {
             return res.status(400).json({ error: 'El usuario ya existe' });
         }
 
+        // Hash de la contraseña
         req.body.password = bcrypt.hashSync(password, 10);
+
+        // Insertar el nuevo usuario
         const result = await authController.insert(req.body);
         res.json(result);
     } catch (error) {
         console.error('Error en el registro', error);
-        res.status(500).json({ error: 'Ocurrió un error al registrar el usuario' });
+        res.status(500).json({ error: 'Ocurrio un error al registrar el usuario' });
     }
+});
+
+// Ruta para el login
+router.post('/login', async (req, res) => {
+    const user = await authController.getUser(req.body.user);
+    
+    if (user === undefined) {
+        return res.status(401).json({ error: 'Error, usuario o contraseña incorrectos' });
+    }
+
+    const equals = bcrypt.compareSync(req.body.password, user.password);
+    if (!equals) {
+        return res.status(401).json({ error: 'Error, usuario o contraseña incorrectos' });
+    }
+
+    res.json({
+        succesfull: createToken(user),
+        done: 'Inicio de sesión correcto'
+    });
 });
 
 // Función para crear el token
@@ -34,24 +56,6 @@ const createToken = (user) => {
 
     return jwt.sign(payload, process.env.TOKEN_KEY, { expiresIn: '1d' }); // Expira en 1 día
 };
-
-// Ruta para el login
-router.post('/login', async (req, res) => {
-    const user = await authController.getUser(req.body.user);
-    if (user === undefined) {
-        res.status(401).json({ error: 'Error, usuario o contraseña incorrectos' });
-    } else {
-        const equals = bcrypt.compareSync(req.body.password, user.password);
-        if (!equals) {
-            res.status(401).json({ error: 'Error, usuario o contraseña incorrectos' });
-        } else {
-            res.json({
-                succesfull: createToken(user),
-                done: 'Inicio de sesión correcto'
-            });
-        }
-    }
-});
 
 // Middleware para proteger rutas
 router.use(middleware.checkToken);
