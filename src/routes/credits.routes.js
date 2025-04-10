@@ -6,7 +6,7 @@ router.post('/request', creditsController.getClient);
 router.post('/registrar', creditsController.createNewCredit);
 const getClient = async (req, res) => {
     try {
-        const { nombreCompleto } = req.body; // o req.query, si usas GET
+        const { nombreCompleto } = req.body; 
         if (!nombreCompleto) {
             return res.status(400).json({ error: 'El nombre completo es requerido' });
         }
