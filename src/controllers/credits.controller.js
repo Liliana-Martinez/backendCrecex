@@ -58,29 +58,47 @@ const getClient = (req, res) => {
 //Viene los datos del front para que los agregue a la base de datos
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos } = req.body;
+
     if (!idCliente || !monto || !semanas || !horarioEntrega) {
         return res.status(400).json({ error: 'Faltan datos obligatorios para registrar el crédito' });
     }
+
     // Calcular el primer sábado siguiente
     const hoy = new Date();
     const primerSábadoSiguiente = new Date(hoy);
-    const diasHastaSábado = (6 - hoy.getDay() + 7) % 7 ; // Siguiente sábado
+    const diasHastaSábado = (6 - hoy.getDay() + 7) % 7; // Sábado = 6
     primerSábadoSiguiente.setDate(hoy.getDate() + diasHastaSábado);
     const primerSabadoFormateado = primerSábadoSiguiente.toISOString().split('T')[0];
-    // Calcular la fecha de vencimiento
+
+    // Calcular fecha de vencimiento
     const semanasInt = parseInt(semanas, 10);
     const fechaVencimiento = new Date(primerSábadoSiguiente);
     fechaVencimiento.setDate(primerSábadoSiguiente.getDate() + semanasInt * 7);
     const fechaVencimientoF = fechaVencimiento.toISOString().split('T')[0];
-    
-    // Consulta modificada para agregar el estado 'Activo'
+
+    // Calcular abono semanal automáticamente
+    const montoNum = parseFloat(monto);
+    let factor;
+    if (semanasInt === 12) {
+        factor = 1.5;
+    } else if (semanasInt === 16) {
+        factor = 1.583;
+    } else {
+        return res.status(400).json({ error: 'Solo se permiten créditos de 12 o 16 semanas' });
+    }
+
+    const totalAPagar = montoNum * factor;
+    const abonoSemanal = Math.round(totalAPagar / semanasInt);
+
+    // Registrar crédito
     const query = `
-        INSERT INTO ${TABLE_CREDITOS} (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, estado)
-        VALUES (?, ?, ?, ?, NOW(), ?, ?, 'Activo')
+        INSERT INTO ${TABLE_CREDITOS} 
+        (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado)
+        VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo')
     `;
     db.query(
         query,
-        [idCliente, monto, semanas, horarioEntrega, fechaVencimientoF, recargos ?? null],
+        [idCliente, monto, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal],
         (err, result) => {
             if (err) {
                 console.error('Error al registrar crédito:', err);
@@ -88,6 +106,7 @@ const createNewCredit = (req, res) => {
             }
             return res.status(201).json({
                 message: 'Crédito registrado correctamente',
+                abonoSemanal: abonoSemanal
             });
         }
     );
