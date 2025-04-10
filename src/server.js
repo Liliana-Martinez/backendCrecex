@@ -4,7 +4,8 @@ const morgan = require('morgan');
 require('./db');
 
 const authRoutes = require('./routes/auth.routes');
-const creditsRouter = require('./routes/credits.routes')
+const creditsRouter = require('./routes/credits.routes');
+const paymentsRouter = require('./routes/payments.routes')
 const app = express(); //Crea instancia de express que es la app del servidor
 
 
@@ -17,6 +18,6 @@ app.use(express.json());
 
 //Definicion de las rutas base de los modulos
 app.use('/api/auth', authRoutes);
-app.use('/api/auth')
-
+app.use('/api/credits', creditsRouter);
+app.use('/api/payments', paymentsRouter);
 module.exports = app;
