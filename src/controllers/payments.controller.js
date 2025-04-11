@@ -30,7 +30,7 @@ const getClientesPorCodigoZona = async (req, res) => {
          WHERE c.idZona = ? 
          AND cr.estado IN ('activo', 'vencido', 'Adicional')  -- Agregamos 'Adicional' a los estados válidos
          GROUP BY c.idCliente, c.nombre, c.apellidoPaterno, c.apellidoMaterno, c.clasificacion, c.tipoCliente, cr.monto, cr.fechaEntrega, cr.fechaVencimiento`,
-        [idZona],
+        [idZona], 
         (err, results) => {
           if (err) reject(err);
           else resolve(results);

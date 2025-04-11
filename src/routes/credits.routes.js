@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const middleware = require('./middleware');
 const creditsController = require('../controllers/credits.controller');
-router.post('/request', creditsController.getClient);
-router.post('/registrar', creditsController.createNewCredit);
+router.post('/new', creditsController.getClient);
+router.post('/newRe', creditsController.createNewCredit);
 const getClient = async (req, res) => {
     try {
         const { nombreCompleto } = req.body; 
@@ -15,7 +15,7 @@ const getClient = async (req, res) => {
             WHERE CONCAT(nombre, ' ', apellido_paterno, ' ', apellido_materno) = ?
         `;
         db.query(query, [nombreCompleto], (err, rows) => {
-            if (err) {
+            if (err) { 
                 console.error('Error al buscar cliente:', err);
                 return res.status(500).json({ error: 'Error del servidor' });
             }
