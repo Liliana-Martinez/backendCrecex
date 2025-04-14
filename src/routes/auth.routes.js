@@ -47,7 +47,8 @@ router.post('/login', async (req, res) => {
 /*Función para generar el token*/
 const createToken = (user) => {
     let payload = {
-        userId: user.id,
+        userId: user.idUsuario,
+        userName: user.usuario,
     };
 
     return jwt.sign(payload, process.env.TOKEN_KEY, { expiresIn: '1d' }); // Expira en 1 día
