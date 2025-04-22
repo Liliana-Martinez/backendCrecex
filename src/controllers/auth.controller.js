@@ -1,7 +1,5 @@
 const db = require('../db'); //Importar la conexion a la base de datos
-
 const TABLE = 'usuarios';
-
 //Funcion que obtiene los usuarios para comprobar la conexión
 const getAll = () => {
     return new Promise((resolve, reject) => {
@@ -14,7 +12,6 @@ const getAll = () => {
         });
     });
 };
-
 //Función para el registro de usuario (Inserción)
 const insert = ({ user, password }) => {
     return new Promise((resolve, reject) => {

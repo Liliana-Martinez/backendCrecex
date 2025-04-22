@@ -7,6 +7,8 @@ const authRoutes = require('./routes/auth.routes');
 const clienGrntRoutes = require('./routes/clients-guarantors.routes');
 const zoneRoutes = require('./routes/zones.routes');
 
+const creditsRouter = require('./routes/credits.routes');
+const paymentsRouter = require('./routes/payments.routes');
 const app = express(); //Crea instancia de express que es la app del servidor
 
 
@@ -20,6 +22,8 @@ app.use(express.json());
 //Definicion de las rutas base de los modulos
 app.use('/api/auth', authRoutes);
 app.use('/api/clients-guarantors', clienGrntRoutes);
+app.use('/api/credits', creditsRouter);
+app.use('/api/payments', paymentsRouter);
 app.use('/api/zones', zoneRoutes);
 
-module.exports = app;
+module.exports = app
