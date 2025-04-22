@@ -3,21 +3,30 @@ const router = express.Router();
 
 const clientGuarantor = require('../controllers/clients-guarantors.controller');
 
-router.post('/clients-guarantors/add', async (req, res) => {
+//Ruta para agregar cliente
+router.post('/add', async (req, res) => {
     try {
         console.log(req.body);
-        const { client, garantias } = req.body;
+        const clientData = req.body;
+        console.log('Estructura completa de clientData:', JSON.stringify(clientData, null, 2));
+
+        //console.log('Datos del cliente recibidos: ', clientData);
+        const garantias = Object.values(clientData.garantias);
+        console.log('Garantias del cliente: ', garantias);
 
         //Insertar al cliente
-        const result = await clientGuarantor.insert(client);
+        const result = await clientGuarantor.insert(clientData);
         const clientId = result.insertId;
 
-        if (Array.isArray(garantias) && garantias.length > 0) {
+        //Insertar garantias
+        if (garantias.length > 0) {
             await clientGuarantor.insertClientGuarantees(clientId, garantias);
         }
         res.status(201).json({ message: 'Cliente y garantias guardados correctamente'});
     } catch (error) {
-        console.error('Error al gguardar al cliete y sus garantias');
+        console.error('Error al guardar al cliete y sus garantias');
         res.status(500).json({ message: 'Error al guardar el cliente y garantias'});
     }
 });
+
+module.exports = router;
