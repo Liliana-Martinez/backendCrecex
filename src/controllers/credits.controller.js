@@ -13,7 +13,8 @@ const getClient = (req, res) => {
     const queryCliente = `
         SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
         FROM ${TABLE_CLIENTES}
-        WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8_general_ci LIKE ?
+        WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+
     `;
 
     const formattedNombre = `%${nombreCompleto.trim()}%`;
