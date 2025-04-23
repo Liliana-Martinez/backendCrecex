@@ -1,10 +1,9 @@
-
 const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
 const getClient = (req, res) => {
-    const { nombreCompleto } = req.body;
+    const { nombreCompleto, modulo } = req.body;
 
     if (!nombreCompleto) {
         return res.status(400).json({ error: 'El nombre completo es requerido' });
@@ -14,7 +13,6 @@ const getClient = (req, res) => {
         SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
         FROM ${TABLE_CLIENTES}
         WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
-
     `;
 
     const formattedNombre = `%${nombreCompleto.trim()}%`;
@@ -32,6 +30,13 @@ const getClient = (req, res) => {
         const cliente = clienteRows[0];
         const idCliente = cliente.idCliente;
 
+        // Módulos que solo necesitan saber si el cliente existe y obtener datos básicos
+        const modulosSoloCliente = ['modify', 'consult', 'collectors'];
+        if (modulosSoloCliente.includes(modulo)) {
+            return res.status(200).json({ cliente });
+        }
+
+        // Módulos que necesitan también información de crédito y pagos
         const queryCredito = `
             SELECT monto, fechaEntrega
             FROM ${TABLE_CREDITOS}
@@ -71,16 +76,16 @@ const getClient = (req, res) => {
     });
 };
 
-//Viene los datos del front para que los agregue a la base de datos
 const createNewCredit = (req, res) => {
-    const { idCliente, monto, semanas, horarioEntrega, recargos } = req.body;
+    const { idCliente, monto, semanas, horarioEntrega, recargos, modulo } = req.body;
 
     if (!idCliente || !monto || !semanas || !horarioEntrega) {
         return res.status(400).json({ error: 'Faltan datos obligatorios para registrar el crédito' });
     }
 
-    // Calcular el primer sábado siguiente
-    const hoy = new Date();
+    // Aquí se puede agregar lógica específica por módulo
+    if (modulo === 'new') {
+        const hoy = new Date();
     const primerSábadoSiguiente = new Date(hoy);
     const diasHastaSábado = (6 - hoy.getDay() + 7) % 7; // Sábado = 6
     primerSábadoSiguiente.setDate(hoy.getDate() + diasHastaSábado);
@@ -126,6 +131,14 @@ const createNewCredit = (req, res) => {
             });
         }
     );
+        // Lógica para crear un nuevo crédito
+    } else if (modulo === 'renew') {
+        // Lógica para renovar el crédito
+    } else if (modulo === 'additional') {
+        // Lógica para créditos adicionales
+    } else if (modulo === 'collectors') {
+        // Lógica para colecciones o pagos pendientes
+    }
 };
 
 module.exports = {
