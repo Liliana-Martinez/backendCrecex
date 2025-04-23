@@ -14,7 +14,6 @@ const getClient = (req, res) => {
         FROM ${TABLE_CLIENTES}
         WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
     `;
-
     const formattedNombre = `%${nombreCompleto.trim()}%`;
 
     db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
@@ -30,24 +29,16 @@ const getClient = (req, res) => {
         const cliente = clienteRows[0];
         const idCliente = cliente.idCliente;
 
-        // Módulos que solo necesitan saber si el cliente existe y obtener datos básicos
         const modulosSoloCliente = ['modify', 'consult', 'collectors'];
         if (modulosSoloCliente.includes(modulo)) {
             return res.status(200).json({ cliente });
         }
 
-        // Módulos que necesitan también información de crédito y pagos
         const queryCredito = `
             SELECT monto, fechaEntrega
             FROM ${TABLE_CREDITOS}
-            WHERE idCliente = ?
+            WHERE idCliente = ? AND estado = 'activo'
             LIMIT 1
-        `;
-
-        const queryPagos = `
-            SELECT numeroSemana, cantidad
-            FROM ${TABLE_PAGOS}
-            WHERE idCliente = ?
         `;
 
         db.query(queryCredito, [idCliente], (err, creditoRows) => {
@@ -56,7 +47,18 @@ const getClient = (req, res) => {
                 return res.status(500).json({ error: 'Error al buscar crédito' });
             }
 
-            const credito = creditoRows.length > 0 ? creditoRows[0] : {};
+            if (creditoRows.length === 0) {
+                // No hay crédito activo, se responde solo con cliente
+                return res.status(200).json({ cliente });
+            }
+
+            const credito = creditoRows[0];
+
+            const queryPagos = `
+                SELECT numeroSemana, cantidad
+                FROM ${TABLE_PAGOS}
+                WHERE idCliente = ?
+            `;
 
             db.query(queryPagos, [idCliente], (err, pagosRows) => {
                 if (err) {
@@ -75,6 +77,7 @@ const getClient = (req, res) => {
         });
     });
 };
+
 
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo } = req.body;
