@@ -3,6 +3,7 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
+
 const getClient = (req, res) => {
     const { nombreCompleto } = req.body;
 
