@@ -2,6 +2,8 @@ const db = require('../db');
 
 const TABLE_CLIENTS = 'clientes';
 const TABLE_GRNT_CNTS = 'garantias_cliente'; //GRNT=GARANTIAS CNTS=CLIENTES
+const TABLE_AVALES = 'avales';
+const TABLE_GRNT_AVAL = 'garantias_aval';
 
 //insertar los datos personales del cliente
 const insert = (clientData) => {
@@ -28,7 +30,7 @@ const insert = (clientData) => {
         console.log('Datos personales: ', personalData);
         db.query(query, personalData, (err, result) => {
             if (err) {
-                console.log('No se agregaron los datos personales.');
+                console.log('No se agregaron los datos personales.', err);
                 reject(err);
             }
             else {
@@ -56,8 +58,56 @@ const insertClientGuarantees = (clientId, garantias) => {
     });
 };
 
+const insertGuarantor = (guarantorData) => {
+    return new Promise((resolve, reject) => {
+        const query = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        const personalData = [
+            guarantorData.clientId,
+            guarantorData.name,
+            guarantorData.paternalLn,
+            guarantorData.maternalLn,
+            guarantorData.age,
+            guarantorData.address,
+            guarantorData.phone,
+            guarantorData.nameJob,
+            guarantorData.addressJob,
+            guarantorData.phoneJob
+        ];
+
+        db.query(query, personalData, (err, result) => {
+            if (err) {
+                console.log('No se agregaron los datos personales', err);
+                reject(err);
+            }
+            else {
+                console.log('Se agregaron correctamente los datos personales')
+                resolve(result);
+            }
+        });
+    });
+};
+
+const insertAvalGarantias = (avalId, garantias) => {
+    return new Promise((resolve, reject) => {
+        const query = `INSERT INTO ${TABLE_GRNT_AVAL} (idAval, descripcion) VALUES ?`;
+
+        const values = garantias.map(desc => [avalId, desc]);
+
+        db.query(query, [values], (err, result) => {
+            if (err) {
+                reject(err);
+            }
+            else {
+                resolve(result);
+            }
+        });
+    });
+};
 module.exports = {
     insert,
-    insertClientGuarantees
+    insertClientGuarantees,
+    insertGuarantor,
+    insertAvalGarantias,
 }
 

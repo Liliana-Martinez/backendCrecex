@@ -5,6 +5,7 @@ const TABLE_PAGOS = 'pagos';
 
 const getClient = (req, res) => {
     const { nombreCompleto, modulo } = req.body;
+    console.log("Lo que se recibe del front: ", req.body);
 
     if (!nombreCompleto) {
         return res.status(400).json({ error: 'El nombre completo es requerido' });
@@ -36,10 +37,9 @@ const getClient = (req, res) => {
         }
 
         const queryCredito = `
-            SELECT monto, fechaEntrega
-            FROM ${TABLE_CREDITOS}
-            WHERE idCliente = ? AND estado = 'activo'
-            LIMIT 1
+            SELECT * FROM ${TABLE_CREDITOS}
+            WHERE idCliente = ? 
+            ORDER BY fechaEntrega DESC
         `;
 
         db.query(queryCredito, [idCliente], (err, creditoRows) => {
@@ -48,12 +48,9 @@ const getClient = (req, res) => {
                 return res.status(500).json({ error: 'Error al buscar crédito' });
             }
 
-            if (creditoRows.length === 0) {
-                // No hay crédito activo, se responde solo con cliente
-                return res.status(200).json({ cliente });
-            }
 
-            const credito = creditoRows[0];
+            const creditos = creditoRows;
+            console.log("Creditos: ", creditos);
 
             const queryPagos = `
                 SELECT numeroSemana, cantidad
@@ -71,7 +68,7 @@ const getClient = (req, res) => {
 
                 return res.status(200).json({
                     cliente,
-                    credito,
+                    creditos,
                     pagos
                 });
             });
