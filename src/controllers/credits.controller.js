@@ -3,7 +3,7 @@ const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
 // credits.controller.js
-const getClient = (nombreCompleto) => {
+const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
@@ -11,12 +11,9 @@ const getClient = (nombreCompleto) => {
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
         `;
         const formattedNombre = `%${nombreCompleto.trim()}%`;
-
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
             if (err) return reject('Error al buscar cliente');
-
             if (clienteRows.length === 0) return resolve(null);
-
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
 
@@ -196,6 +193,6 @@ const createNewCredit = (req, res) => {
 
 
 module.exports = {
-    getClient, 
+    SearchCredit, 
     createNewCredit
 };

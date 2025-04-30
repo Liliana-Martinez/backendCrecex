@@ -14,7 +14,7 @@ router.post('/add', async (req, res) => {
         const garantias = Object.values(clientData.garantias);
         console.log('Garantias del cliente: ', garantias);
 
-        //Insertar al cliente
+        //Insertar al cliente 
         const result = await clientGuarantor.insert(clientData);
         const clientId = result.insertId;
 
