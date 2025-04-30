@@ -17,16 +17,16 @@ router.post('/buscar-cliente', async (req, res) => {
             case 'new':
             case 'renew':
             case 'additional':
-                result = await creditsController.getClient(nombreCompleto);
+                result = await creditsController.SearchCredit(nombreCompleto);
                 break;
             case 'collectors':
-                result = await creditsController.handleCollectors(nombreCompleto);
+                result = await creditsController.SearchCollectors(nombreCompleto);
                 break;
             case 'consult':
-                result = await creditsController.handleConsult(nombreCompleto);
+                result = await creditsController.SearchConsult(nombreCompleto);
                 break;
             case 'modify':
-                result = await creditsController.handleModify(nombreCompleto);
+                result = await creditsController.SearchModify(nombreCompleto);
                 break;
             default:
                 return res.status(400).json({ message: 'Módulo no reconocido' });
