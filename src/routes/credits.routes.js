@@ -1,32 +1,44 @@
 const express = require('express');
 const router = express.Router();
-const middleware = require('./middleware');
-const creditsController = require('../controllers/credits.controller');
-router.post('/buscar-cliente', creditsController.getClient);
-router.post('/newCredit', creditsController.createNewCredit);
-const getClient = async (req, res) => {
+const  creditsController= require('../controllers/credits.controller');
+//router.post('/buscar-cliente', creditsController.getClient);
+router.post('/new', creditsController.createNewCredit);
+
+router.post('/buscar-cliente', async (req, res) => {
     try {
-        const { nombreCompleto } = req.body; 
-        if (!nombreCompleto) {
-            return res.status(400).json({ error: 'El nombre completo es requerido' });
+        const { nombreCompleto, modulo } = req.body;
+
+        console.log('Nombre recibido:', nombreCompleto);
+        console.log('Módulo solicitado:', modulo);
+
+        let result;
+
+        switch (modulo) {
+            case 'new':
+            case 'renew':
+            case 'additional':
+                result = await creditsController.SearchCredit(nombreCompleto);
+                break;
+            case 'collectors':
+                result = await creditsController.SearchCollectors(nombreCompleto);
+                break;
+            case 'consult':
+                result = await creditsController.SearchConsult(nombreCompleto);
+                break;
+            case 'modify':
+                result = await creditsController.SearchModify(nombreCompleto);
+                break;
+            default:
+                return res.status(400).json({ message: 'Módulo no reconocido' });
         }
-        const query = `
-            SELECT * FROM ${TABLE}
-            WHERE CONCAT(nombre, ' ', apellido_paterno, ' ', apellido_materno) = ?
-        `;
-        db.query(query, [nombreCompleto], (err, rows) => {
-            if (err) { 
-                console.error('Error al buscar cliente:', err);
-                return res.status(500).json({ error: 'Error del servidor' });
-            }
-            if (rows.length === 0) {
-                return res.status(404).json({ message: 'Cliente no encontrado' });
-            }
-            return res.status(200).json(rows[0]);
-        });
+
+        res.status(200).json(result);
     } catch (error) {
-        console.error('Error inesperado:', error);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        console.error('Error al procesar la solicitud:', error);
+
+        res.status(500).json({ message: 'Error en el servidor' });
     }
-};
+});
+
+
 module.exports = router;
