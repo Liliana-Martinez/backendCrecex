@@ -2,7 +2,7 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
-// credits.controller.js
+
 const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
@@ -11,9 +11,11 @@ const SearchCredit = (nombreCompleto) => {
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
         `;
         const formattedNombre = `%${nombreCompleto.trim()}%`;
+
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
             if (err) return reject('Error al buscar cliente');
             if (clienteRows.length === 0) return resolve(null);
+
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
 
@@ -29,6 +31,10 @@ const SearchCredit = (nombreCompleto) => {
 
                 const credito = creditoRows[0] || null;
 
+                if (!credito) {
+                    return resolve({ cliente, credito: null, pagos: [] });
+                }
+
                 const queryPagos = `
                     SELECT numeroSemana, cantidad, estado
                     FROM ${TABLE_PAGOS}
@@ -37,7 +43,7 @@ const SearchCredit = (nombreCompleto) => {
                     LIMIT 1
                 `;
 
-                db.query(queryPagos, [credito ? credito.idCredito : null], (err, pagosRows) => {
+                db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
                     if (err) return reject('Error al buscar pagos');
 
                     const pagos = pagosRows.length > 0 ? pagosRows : [];
@@ -53,9 +59,6 @@ const SearchCredit = (nombreCompleto) => {
     });
 };
 
-
-
-
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
 
@@ -65,20 +68,17 @@ const createNewCredit = (req, res) => {
 
     if (modulo === 'new') {
         const hoy = new Date();
-
         const primerSábadoSiguiente = new Date(hoy);
         const diasHastaSábado = (6 - hoy.getDay() + 7) % 7;
         primerSábadoSiguiente.setDate(hoy.getDate() + diasHastaSábado);
 
         const semanasInt = parseInt(semanas, 10);
-
         const fechaVencimiento = new Date(primerSábadoSiguiente);
         fechaVencimiento.setDate(primerSábadoSiguiente.getDate() + semanasInt * 7);
         const fechaVencimientoF = fechaVencimiento.toISOString().split('T')[0];
 
         const montoNum = parseFloat(monto);
 
-        // Primero buscamos la clasificación del cliente
         const buscarClienteQuery = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
         db.query(buscarClienteQuery, [idCliente], (errCliente, resultCliente) => {
             if (errCliente) {
@@ -92,7 +92,6 @@ const createNewCredit = (req, res) => {
 
             const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-            // Validaciones de monto mínimo general
             if (semanasInt === 12 && montoNum < 1000) {
                 return res.status(400).json({ error: 'El monto mínimo para 12 semanas es de $1000' });
             }
@@ -100,9 +99,7 @@ const createNewCredit = (req, res) => {
                 return res.status(400).json({ error: 'El monto mínimo para 16 semanas es de $4000' });
             }
 
-            // Validaciones de monto y semanas según la clasificación
             let validacionCorrecta = false;
-
             switch (clasificacion) {
                 case 'D':
                     if (semanasInt === 12 && montoNum <= 2000) validacionCorrecta = true;
@@ -124,7 +121,6 @@ const createNewCredit = (req, res) => {
                 return res.status(400).json({ error: 'El monto no cumple con las condiciones de la clasificación' });
             }
 
-            // Si todo ok, seguimos
             let factor;
             if (semanasInt === 12) {
                 factor = 1.5;
@@ -146,6 +142,7 @@ const createNewCredit = (req, res) => {
                 (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito)
                 VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo')
             `;
+
             db.query(
                 query,
                 [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal],
@@ -156,8 +153,6 @@ const createNewCredit = (req, res) => {
                     }
 
                     const idCredito = result.insertId;
-
-                    // Ahora registramos los pagos esperados
                     const pagosQuery = `
                         INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
                         VALUES
@@ -166,13 +161,12 @@ const createNewCredit = (req, res) => {
                     let pagosValues = [];
                     for (let i = 0; i < semanasInt; i++) {
                         const fechaPago = new Date(primerSábadoSiguiente);
-                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7); // (i+1) semanas después
+                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
                         const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
-
                         pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
                     }
 
-                    db.query(pagosQuery + pagosValues.join(', '), (err3, result2) => {
+                    db.query(pagosQuery + pagosValues.join(', '), (err3) => {
                         if (err3) {
                             console.error('Error al registrar pagos:', err3);
                             return res.status(500).json({ error: 'Error al guardar los pagos' });
@@ -180,8 +174,8 @@ const createNewCredit = (req, res) => {
 
                         return res.status(201).json({
                             message: 'Crédito registrado correctamente',
-                            abonoSemanal: abonoSemanal,
-                            efectivo: efectivo
+                            abonoSemanal,
+                            efectivo
                         });
                     });
                 }
@@ -190,9 +184,7 @@ const createNewCredit = (req, res) => {
     }
 };
 
-
-
 module.exports = {
-    SearchCredit, 
+    SearchCredit,
     createNewCredit
 };
