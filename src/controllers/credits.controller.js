@@ -5,79 +5,84 @@ const TABLE_PAGOS = 'pagos';
 
 const getClient = (req, res) => {
     const { nombreCompleto, modulo } = req.body;
-
     if (!nombreCompleto) {
-        return res.status(400).json({ error: 'El nombre completo es requerido' });
+      return res.status(400).json({ error: 'El nombre completo es requerido' });
     }
 
     const queryCliente = `
-        SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
-        FROM ${TABLE_CLIENTES}
-        WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+      SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
+      FROM ${TABLE_CLIENTES}
+      WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
     `;
     const formattedNombre = `%${nombreCompleto.trim()}%`;
-
-    db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-        if (err) {
-            console.error('Error al buscar cliente:', err);
-            return res.status(500).json({ error: 'Error del servidor' });
-        }
-
-        if (clienteRows.length === 0) {
-            return res.status(404).json({ message: 'Cliente no encontrado' });
-        }
-
-        const cliente = clienteRows[0];
-        const idCliente = cliente.idCliente;
-
-        const modulosSoloCliente = ['modify', 'consult', 'collectors'];
-        if (modulosSoloCliente.includes(modulo)) {
-            return res.status(200).json({ cliente });
-        }
-
-        const queryCredito = `
+  
+    db.query(queryCliente, [formattedNombre], (errCliente, clienteRows) => {
+      if (errCliente) {
+        console.error('Error al buscar cliente:', errCliente);
+        return res.status(500).json({ error: 'Error del servidor' });
+      }
+  
+      if (clienteRows.length === 0) {
+        return res.status(404).json({ message: 'Cliente no encontrado' });
+      }
+  
+      const cliente = clienteRows[0];
+      const idCliente = cliente.idCliente;
+  
+      switch (modulo) {
+        case 'new':
+        case 'renew':
+        case 'additional': {
+          const queryCredito = `
             SELECT monto, fechaEntrega
             FROM ${TABLE_CREDITOS}
             WHERE idCliente = ? AND estado = 'activo'
             LIMIT 1
-        `;
-
-        db.query(queryCredito, [idCliente], (err, creditoRows) => {
-            if (err) {
-                console.error('Error al buscar crédito:', err);
-                return res.status(500).json({ error: 'Error al buscar crédito' });
+          `;
+  
+          db.query(queryCredito, [idCliente], (errCredito, creditoRows) => {
+            if (errCredito) {
+              console.error('Error al buscar crédito:', errCredito);
+              return res.status(500).json({ error: 'Error al buscar crédito' });
             }
-
-            if (creditoRows.length === 0) {
-                // No hay crédito activo, se responde solo con cliente
-                return res.status(200).json({ cliente });
-            }
-
-            const credito = creditoRows[0];
-
+  
+            const credito = creditoRows[0] || null;
+  
             const queryPagos = `
-                SELECT numeroSemana, cantidad
-                FROM ${TABLE_PAGOS}
-                WHERE idCliente = ?
+              SELECT numeroSemana, cantidad
+              FROM ${TABLE_PAGOS}
+              WHERE idCliente = ?
             `;
-
-            db.query(queryPagos, [idCliente], (err, pagosRows) => {
-                if (err) {
-                    console.error('Error al buscar pagos:', err);
-                    return res.status(500).json({ error: 'Error al buscar pagos' });
-                }
-
-                const pagos = pagosRows.length > 0 ? pagosRows : [];
-
-                return res.status(200).json({
-                    cliente,
-                    credito,
-                    pagos
-                });
+  
+            db.query(queryPagos, [idCliente], (errPagos, pagosRows) => {
+              if (errPagos) {
+                console.error('Error al buscar pagos:', errPagos);
+                return res.status(500).json({ error: 'Error al buscar pagos' });
+              }
+  
+              const pagos = pagosRows.length > 0 ? pagosRows : [];
+  
+              return res.status(200).json({
+                cliente,
+                credito,
+                pagos
+              });
             });
-        });
+          });
+          break;
+        }
+  
+        case 'consult':
+        case 'modify':
+        case 'collectors':
+          return res.status(200).json({ idCliente });
+  
+        default:
+          return res.status(400).json({ error: 'Módulo no reconocido' });
+      }
     });
-};
+  };
+  
 
 
 const createNewCredit = (req, res) => {
