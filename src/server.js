@@ -9,6 +9,7 @@ const zoneRoutes = require('./routes/zones.routes');
 
 const creditsRouter = require('./routes/credits.routes');
 const paymentsRouter = require('./routes/payments.routes');
+const creditBureauRouter = require('./routes/credit-bureau.routes');
 const app = express(); //Crea instancia de express que es la app del servidor
 
 
@@ -17,7 +18,6 @@ app.use(express.json());
 app.use(morgan('dev'));
 
 app.use(cors());
-app.use(express.json());
 
 //Definicion de las rutas base de los modulos
 app.use('/api/auth', authRoutes);
@@ -25,5 +25,6 @@ app.use('/api/clients-guarantors', clienGrntRoutes);
 app.use('/api/credits', creditsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/zones', zoneRoutes);
+app.use('/api/credit-bureau', creditBureauRouter);
 
 module.exports = app
