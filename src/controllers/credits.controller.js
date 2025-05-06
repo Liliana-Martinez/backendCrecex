@@ -3,72 +3,6 @@ const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
 
-<<<<<<< HEAD
-const getClient = (req, res) => {
-    const { nombreCompleto, modulo } = req.body;
-    if (!nombreCompleto) {
-      return res.status(400).json({ error: 'El nombre completo es requerido' });
-    }
-
-    const queryCliente = `
-      SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
-      FROM ${TABLE_CLIENTES}
-      WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
-    `;
-    const formattedNombre = `%${nombreCompleto.trim()}%`;
-  
-    db.query(queryCliente, [formattedNombre], (errCliente, clienteRows) => {
-      if (errCliente) {
-        console.error('Error al buscar cliente:', errCliente);
-        return res.status(500).json({ error: 'Error del servidor' });
-      }
-  
-      if (clienteRows.length === 0) {
-        return res.status(404).json({ message: 'Cliente no encontrado' });
-      }
-  
-      const cliente = clienteRows[0];
-      const idCliente = cliente.idCliente;
-  
-      switch (modulo) {
-        case 'new':
-        case 'renew':
-        case 'additional': {
-          const queryCredito = `
-            SELECT monto, fechaEntrega
-            FROM ${TABLE_CREDITOS}
-            WHERE idCliente = ? AND estado = 'activo'
-            LIMIT 1
-          `;
-  
-          db.query(queryCredito, [idCliente], (errCredito, creditoRows) => {
-            if (errCredito) {
-              console.error('Error al buscar crédito:', errCredito);
-              return res.status(500).json({ error: 'Error al buscar crédito' });
-            }
-  
-            const credito = creditoRows[0] || null;
-  
-            const queryPagos = `
-              SELECT numeroSemana, cantidad
-              FROM ${TABLE_PAGOS}
-              WHERE idCliente = ?
-            `;
-  
-            db.query(queryPagos, [idCliente], (errPagos, pagosRows) => {
-              if (errPagos) {
-                console.error('Error al buscar pagos:', errPagos);
-                return res.status(500).json({ error: 'Error al buscar pagos' });
-              }
-  
-              const pagos = pagosRows.length > 0 ? pagosRows : [];
-  
-              return res.status(200).json({
-                cliente,
-                credito,
-                pagos
-              });
-=======
 const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
@@ -120,23 +54,11 @@ const SearchCredit = (nombreCompleto) => {
                         pagos
                     });
                 });
->>>>>>> a5be0c3186e4dd94d7b6a5b16c37f2b1e35cc7ef
             });
-          });
-          break;
-        }
-  
-        case 'consult':
-        case 'modify':
-        case 'collectors':
-          return res.status(200).json({ idCliente });
-  
-        default:
-          return res.status(400).json({ error: 'Módulo no reconocido' });
-      }
+        });
     });
-  };
-  
+};
+
 
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
@@ -252,7 +174,6 @@ const createNewCredit = (req, res) => {
                         }
 
                         return res.status(201).json({
-                            message: 'Crédito registrado correctamente',
                             abonoSemanal,
                             efectivo
                         });
