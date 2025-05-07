@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const creditsController = require('../controllers/credits.controller');
+const middleware = require('./middleware');
+const creditsController = require('../controllers/credits.controller');
 router.post('/new', creditsController.createNewCredit);
 
 router.post('/buscar-cliente', async (req, res) => {
@@ -38,5 +40,4 @@ router.post('/buscar-cliente', async (req, res) => {
         res.status(500).json({ message: 'Error en el servidor' });
     }
 });
-
 module.exports = router;

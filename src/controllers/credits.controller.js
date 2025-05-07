@@ -59,6 +59,7 @@ const SearchCredit = (nombreCompleto) => {
     });
 };
 
+
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
 
@@ -177,7 +178,6 @@ const createNewCredit = (req, res) => {
                         }
 
                         return res.status(201).json({
-                            message: 'Crédito registrado correctamente',
                             abonoSemanal,
                             efectivo
                         });
