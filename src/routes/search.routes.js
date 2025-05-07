@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const creditsController = require('../controllers/credits.controller');
-const searchController = require('../controllers/credits.controller');
+const searchController = require('../controllers/search.controller');
 router.post('/cliente', async (req, res) => {
     try {
         const { nombreCompleto, modulo } = req.body;
@@ -15,16 +14,16 @@ router.post('/cliente', async (req, res) => {
             case 'new':
             case 'renew':
             case 'additional':
-                result = await creditsController.SearchCredit(nombreCompleto);
+                result = await searchController.SearchCredit(nombreCompleto);
                 break;
             case 'collectors':
-                result = await creditsController.SearchCollectors(nombreCompleto);
+                result = await searchController.SearchCollectors(nombreCompleto);
                 break;
             case 'consult':
-                result = await creditsController.SearchConsult(nombreCompleto);
+                result = await searchController.SearchConsult(nombreCompleto);
                 break;
             case 'modify':
-                result = await creditsController.SearchModify(nombreCompleto);
+                result = await searchController.SearchModify(nombreCompleto);
                 break;
             default:
                 return res.status(400).json({ message: 'Módulo no reconocido' });

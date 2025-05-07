@@ -58,6 +58,84 @@ const SearchCredit= (nombreCompleto) => {
         });
     });
 };
+
+const SearchCollectors = (nombreCompleto) => {
+    return new Promise((resolve, reject) => {
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+
+        const queryCliente = `
+            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono,
+                   clasificacion, tipoCliente, puntos, trabajo, domicilioTrabajo, telefonoTrabajo,
+                   nombreReferencia, domicilioReferencia, telefonoReferencia
+            FROM clientes
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+            LIMIT 1
+        `;
+
+        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+            if (err) return reject('Error al buscar cliente');
+            if (clienteRows.length === 0) return resolve(null);
+
+            const cliente = clienteRows[0];
+            const idCliente = cliente.idCliente;
+
+            // Buscar avales relacionados
+            const queryAvales = `
+                SELECT idAval, idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, telefono,
+                       trabajo, domicilioTrabajo, telefonoTrabajo
+                FROM avales
+                WHERE idCliente = ?
+            `;
+
+            db.query(queryAvales, [idCliente], (err, avalesRows) => {
+                if (err) return reject('Error al buscar avales');
+
+                // Buscar garantías del cliente
+                const queryGarantiasCliente = `
+                    SELECT idGarantia, idCliente, descripcion
+                    FROM garantias_cliente
+                    WHERE idCliente = ?
+                `;
+
+                db.query(queryGarantiasCliente, [idCliente], (err, garantiasClienteRows) => {
+                    if (err) return reject('Error al buscar garantías del cliente');
+
+                    if (avalesRows.length === 0) {
+                        return resolve({
+                            cliente,
+                            avales: [],
+                            garantiasCliente: garantiasClienteRows,
+                            garantiasAval: []
+                        });
+                    }
+
+                    const avalIds = avalesRows.map(a => a.idAval);
+                    
+                    // Buscar garantías de todos los avales relacionados
+                    const queryGarantiasAval = `
+                        SELECT idGarantia, idAval, descripcion
+                        FROM garantias_aval
+                        WHERE idAval IN (?)
+                    `;
+
+                    db.query(queryGarantiasAval, [avalIds], (err, garantiasAvalRows) => {
+                        if (err) return reject('Error al buscar garantías de avales');
+
+                        return resolve({
+                            cliente,
+                            avales: avalesRows,
+                            garantiasCliente: garantiasClienteRows,
+                            garantiasAval: garantiasAvalRows
+                        });
+                    });
+                });
+            });
+        });
+    });
+};
+
+
 module.exports = {
-    SearchCredit
+    SearchCredit, 
+    SearchCollectors
 };
