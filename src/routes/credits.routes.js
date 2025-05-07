@@ -23,7 +23,7 @@ router.post('/buscar-cliente', async (req, res) => {
                 result = await creditsController.SearchCollectors(nombreCompleto);
                 break;
             case 'consult':
-                result = await creditsController.SearchConsult(nombreCompleto);
+                result = await creditsController.searchConsult(nombreCompleto);
                 break;
             case 'modify':
                 result = await creditsController.SearchModify(nombreCompleto);

@@ -2,70 +2,22 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
-<<<<<<< HEAD
 
-const getClient = (req, res) => {
-    const { nombreCompleto, modulo } = req.body;
-    console.log("Lo que se recibe del front: ", req.body);
-
-    if (!nombreCompleto) {
-        return res.status(400).json({ error: 'El nombre completo es requerido' });
-    }
-
-    const queryCliente = `
-        SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
-        FROM ${TABLE_CLIENTES}
-        WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
-    `;
-    const formattedNombre = `%${nombreCompleto.trim()}%`;
-
-    db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-        if (err) {
-            console.error('Error al buscar cliente:', err);
-            return res.status(500).json({ error: 'Error del servidor' });
-        }
-
-        if (clienteRows.length === 0) {
-            return res.status(404).json({ message: 'Cliente no encontrado' });
-        }
-
-        const cliente = clienteRows[0];
-        const idCliente = cliente.idCliente;
-
-        const modulosSoloCliente = ['modify', 'consult', 'collectors'];
-        if (modulosSoloCliente.includes(modulo)) {
-            return res.status(200).json({ cliente });
-        }
-
-        const queryCredito = `
-            SELECT * FROM ${TABLE_CREDITOS}
-            WHERE idCliente = ? 
-            ORDER BY fechaEntrega DESC
-=======
-// credits.controller.js
-const getClient = (nombreCompleto) => {
+const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
             FROM ${TABLE_CLIENTES}
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
->>>>>>> 13233ec5a471bc747dee2dd3a1359ab7dabdaa7b
         `;
         const formattedNombre = `%${nombreCompleto.trim()}%`;
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
             if (err) return reject('Error al buscar cliente');
-
-<<<<<<< HEAD
-
-            const creditos = creditoRows;
-            console.log("Creditos: ", creditos);
-=======
             if (clienteRows.length === 0) return resolve(null);
 
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
->>>>>>> 13233ec5a471bc747dee2dd3a1359ab7dabdaa7b
 
             const queryCredito = `
                 SELECT idCredito, monto, fechaEntrega
@@ -79,12 +31,10 @@ const getClient = (nombreCompleto) => {
 
                 const credito = creditoRows[0] || null;
 
-<<<<<<< HEAD
-                return res.status(200).json({
-                    cliente,
-                    creditos,
-                    pagos
-=======
+                if (!credito) {
+                    return resolve({ cliente, credito: null, pagos: [] });
+                }
+
                 const queryPagos = `
                     SELECT numeroSemana, cantidad, estado
                     FROM ${TABLE_PAGOS}
@@ -93,7 +43,7 @@ const getClient = (nombreCompleto) => {
                     LIMIT 1
                 `;
 
-                db.query(queryPagos, [credito ? credito.idCredito : null], (err, pagosRows) => {
+                db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
                     if (err) return reject('Error al buscar pagos');
 
                     const pagos = pagosRows.length > 0 ? pagosRows : [];
@@ -103,15 +53,11 @@ const getClient = (nombreCompleto) => {
                         credito,
                         pagos
                     });
->>>>>>> 13233ec5a471bc747dee2dd3a1359ab7dabdaa7b
                 });
             });
         });
     });
 };
-
-
-
 
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
@@ -122,20 +68,17 @@ const createNewCredit = (req, res) => {
 
     if (modulo === 'new') {
         const hoy = new Date();
-
         const primerSábadoSiguiente = new Date(hoy);
         const diasHastaSábado = (6 - hoy.getDay() + 7) % 7;
         primerSábadoSiguiente.setDate(hoy.getDate() + diasHastaSábado);
 
         const semanasInt = parseInt(semanas, 10);
-
         const fechaVencimiento = new Date(primerSábadoSiguiente);
         fechaVencimiento.setDate(primerSábadoSiguiente.getDate() + semanasInt * 7);
         const fechaVencimientoF = fechaVencimiento.toISOString().split('T')[0];
 
         const montoNum = parseFloat(monto);
 
-        // Primero buscamos la clasificación del cliente
         const buscarClienteQuery = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
         db.query(buscarClienteQuery, [idCliente], (errCliente, resultCliente) => {
             if (errCliente) {
@@ -149,7 +92,6 @@ const createNewCredit = (req, res) => {
 
             const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-            // Validaciones de monto mínimo general
             if (semanasInt === 12 && montoNum < 1000) {
                 return res.status(400).json({ error: 'El monto mínimo para 12 semanas es de $1000' });
             }
@@ -157,9 +99,7 @@ const createNewCredit = (req, res) => {
                 return res.status(400).json({ error: 'El monto mínimo para 16 semanas es de $4000' });
             }
 
-            // Validaciones de monto y semanas según la clasificación
             let validacionCorrecta = false;
-
             switch (clasificacion) {
                 case 'D':
                     if (semanasInt === 12 && montoNum <= 2000) validacionCorrecta = true;
@@ -181,7 +121,6 @@ const createNewCredit = (req, res) => {
                 return res.status(400).json({ error: 'El monto no cumple con las condiciones de la clasificación' });
             }
 
-            // Si todo ok, seguimos
             let factor;
             if (semanasInt === 12) {
                 factor = 1.5;
@@ -203,6 +142,7 @@ const createNewCredit = (req, res) => {
                 (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito)
                 VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo')
             `;
+
             db.query(
                 query,
                 [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal],
@@ -213,8 +153,6 @@ const createNewCredit = (req, res) => {
                     }
 
                     const idCredito = result.insertId;
-
-                    // Ahora registramos los pagos esperados
                     const pagosQuery = `
                         INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
                         VALUES
@@ -223,13 +161,12 @@ const createNewCredit = (req, res) => {
                     let pagosValues = [];
                     for (let i = 0; i < semanasInt; i++) {
                         const fechaPago = new Date(primerSábadoSiguiente);
-                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7); // (i+1) semanas después
+                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
                         const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
-
                         pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
                     }
 
-                    db.query(pagosQuery + pagosValues.join(', '), (err3, result2) => {
+                    db.query(pagosQuery + pagosValues.join(', '), (err3) => {
                         if (err3) {
                             console.error('Error al registrar pagos:', err3);
                             return res.status(500).json({ error: 'Error al guardar los pagos' });
@@ -237,8 +174,8 @@ const createNewCredit = (req, res) => {
 
                         return res.status(201).json({
                             message: 'Crédito registrado correctamente',
-                            abonoSemanal: abonoSemanal,
-                            efectivo: efectivo
+                            abonoSemanal,
+                            efectivo
                         });
                     });
                 }
@@ -247,9 +184,10 @@ const createNewCredit = (req, res) => {
     }
 };
 
-
+const searchConsult = (req, res) => {};
 
 module.exports = {
-    getClient, 
-    createNewCredit
+    SearchCredit,
+    createNewCredit,
+    searchConsult
 };

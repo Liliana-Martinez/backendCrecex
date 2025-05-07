@@ -11,7 +11,7 @@ router.post('/add', async (req, res) => {
 
         //INsertar en buro de credito
         const result = await creditBureauController.insert(creditBureauData);
-        res.status(201).json({ message: 'Se agrego el cliente a buro de credito.'})
+        res.status(201).json({ message: 'Se agrego el cliente a buro de credito.', result})
     } catch (error) {
         console.log('Error al agregar a buro de credito', error);
         res.status(500).json({ message: 'Error al guardar el cliente en buro de crédito'})
