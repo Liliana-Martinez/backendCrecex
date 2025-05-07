@@ -2,7 +2,7 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
-const SearchConsult = (nombreCompleto) => {
+const SearchCredit= (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
@@ -190,6 +190,5 @@ const createNewCredit = (req, res) => {
 
 module.exports = {
     SearchCredit,
-    SearchConsult,
     createNewCredit
 };
