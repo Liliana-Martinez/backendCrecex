@@ -2,14 +2,14 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
-
-const SearchCredit = (nombreCompleto) => {
+const SearchCredit= (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
             FROM ${TABLE_CLIENTES}
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
         `;
+
         const formattedNombre = `%${nombreCompleto.trim()}%`;
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
@@ -59,6 +59,7 @@ const SearchCredit = (nombreCompleto) => {
     });
 };
 
+
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
 
@@ -80,6 +81,7 @@ const createNewCredit = (req, res) => {
         const montoNum = parseFloat(monto);
 
         const buscarClienteQuery = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
+
         db.query(buscarClienteQuery, [idCliente], (errCliente, resultCliente) => {
             if (errCliente) {
                 console.error('Error al buscar cliente:', errCliente);
@@ -89,16 +91,26 @@ const createNewCredit = (req, res) => {
             if (resultCliente.length === 0) {
                 return res.status(404).json({ error: 'El cliente no existe' });
             }
-
+            // Cálculo del abono
+            let factor;
+            if (semanasInt === 12) {
+                factor = 1.5;
+            } else if (semanasInt === 16) {
+                factor = 1.583;
+            } else {
+                return res.status(400).json({ error:  true, message:  'Solo se permiten créditos de 12 o 16 semanas' });
+            }
             const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
+            // Validaciones de monto mínimo
             if (semanasInt === 12 && montoNum < 1000) {
-                return res.status(400).json({ error: 'El monto mínimo para 12 semanas es de $1000' });
+                return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
             }
             if (semanasInt === 16 && montoNum < 4000) {
-                return res.status(400).json({ error: 'El monto mínimo para 16 semanas es de $4000' });
+                return res.status(400).json({ error:  true, message:  'El monto mínimo para 16 semanas es de $4000' });
             }
 
+            // Validación según clasificación
             let validacionCorrecta = false;
             switch (clasificacion) {
                 case 'D':
@@ -114,21 +126,14 @@ const createNewCredit = (req, res) => {
                     if ((semanasInt === 12 || semanasInt === 16) && montoNum >= 7500) validacionCorrecta = true;
                     break;
                 default:
-                    return res.status(400).json({ error: 'Clasificación del cliente no válida' });
+                    return res.status(400).json({ error:  true, message:  'Clasificación del cliente no válida' });
             }
 
             if (!validacionCorrecta) {
-                return res.status(400).json({ error: 'El monto no cumple con las condiciones de la clasificación' });
+                return res.status(400).json({ error:  true, message: 'El monto no cumple con las condiciones de la clasificación' });
             }
 
-            let factor;
-            if (semanasInt === 12) {
-                factor = 1.5;
-            } else if (semanasInt === 16) {
-                factor = 1.583;
-            } else {
-                return res.status(400).json({ error: 'Solo se permiten créditos de 12 o 16 semanas' });
-            }
+            
 
             const totalAPagar = montoNum * factor;
             const abonoSemanal = Math.round(totalAPagar / semanasInt);
@@ -139,17 +144,17 @@ const createNewCredit = (req, res) => {
 
             const query = `
                 INSERT INTO ${TABLE_CREDITOS} 
-                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito)
-                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo')
+                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
+                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo', ?)
             `;
 
             db.query(
                 query,
-                [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal],
+                [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal, efectivo],
                 (err, result) => {
                     if (err) {
                         console.error('Error al registrar crédito:', err);
-                        return res.status(500).json({ error: 'Error al guardar el crédito' });
+                        return res.status(500).json({ error:  true, message:  'Error al guardar el crédito' });
                     }
 
                     const idCredito = result.insertId;
@@ -173,7 +178,6 @@ const createNewCredit = (req, res) => {
                         }
 
                         return res.status(201).json({
-                            message: 'Crédito registrado correctamente',
                             abonoSemanal,
                             efectivo
                         });
@@ -184,10 +188,7 @@ const createNewCredit = (req, res) => {
     }
 };
 
-const searchConsult = (req, res) => {};
-
 module.exports = {
     SearchCredit,
-    createNewCredit,
-    searchConsult
+    createNewCredit
 };
