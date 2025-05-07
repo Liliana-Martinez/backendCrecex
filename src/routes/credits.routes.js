@@ -1,13 +1,6 @@
 const express = require('express');
 const router = express.Router();
-<<<<<<< HEAD
-const middleware = require('./middleware');
 const creditsController = require('../controllers/credits.controller');
-router.post('/buscar-cliente', creditsController.getClient);
-router.post('/newCredit', creditsController.createNewCredit);
-=======
-const  creditsController= require('../controllers/credits.controller');
-//router.post('/buscar-cliente', creditsController.getClient);
 router.post('/new', creditsController.createNewCredit);
 
 router.post('/buscar-cliente', async (req, res) => {
@@ -46,6 +39,4 @@ router.post('/buscar-cliente', async (req, res) => {
     }
 });
 
-
->>>>>>> a5be0c3186e4dd94d7b6a5b16c37f2b1e35cc7ef
 module.exports = router;
