@@ -134,8 +134,55 @@ const SearchCollectors = (nombreCompleto) => {
     });
 };
 
+//Busqueda para "consulta" dentro de "Clientes-avales"
+const searchConsult = (nombreCompleto) => {
+    console.log('nombre completo en searchConsult: ', nombreCompleto);
+    return new Promise((resolve, reject) => {
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+        //Buscar el cliente por nombre
+        const clientQuery = `SELECT * FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
+        db.query(clientQuery, [nombreCompleto], (err, clientResult) => {
+            if (err) {
+                return reject(err);
+            }
+
+            if (clientResult.length === 0) {
+                return resolve({ message: 'Cliente no encontrado'});
+            }
+
+            const client = clientResult[0];
+            const idCliente = client.idCliente;
+
+            //Buscar el credito actual activo
+            const currentCreditQuery = `SELECT * FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'activo'`;
+
+            db.query(currentCreditQuery, [idCliente], (err, currentCreditResult) => {
+                if (err) {
+                    return reject(err);
+                }
+
+                const currentCredit = currentCreditResult[0] || null;
+
+                //Buscar el historial crediticio
+                const historyCreditQuery = `SELECT * FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
+
+                db.query(historyCreditQuery, [idCliente], (err, creditHistoryResult) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    resolve({
+                        client,
+                        currentCredit,
+                        creditHistory: creditHistoryResult
+                    });
+                });
+            });
+        });
+    });
+};
 module.exports = {
     SearchCredit, 
-    SearchCollectors
+    SearchCollectors,
+    searchConsult
 };

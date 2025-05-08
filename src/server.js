@@ -27,5 +27,5 @@ app.use('/api/credits', creditsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/zones', zoneRoutes);
 app.use('/api/credit-bureau', creditBureauRouter);
-app.use('/api/search', searchRoutes )
+app.use('/api/search', searchRoutes);
 module.exports = app
