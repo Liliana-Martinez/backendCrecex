@@ -29,7 +29,7 @@ const insert = (creditBureauData) => {
 const searchByName = (name) => {
     return new Promise((resolve, reject) => {
         const query = `SELECT * FROM ${TABLE_CREDIT_BUREAU} WHERE nombre LIKE ?`;
-        const searchPattern = `%${name}`;
+        const searchPattern = `%${name}%`;
 
         db.query(query, [searchPattern], (err, results) => {
             if (err) {

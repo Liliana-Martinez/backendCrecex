@@ -1,0 +1,141 @@
+const db = require('../db');
+const TABLE_CLIENTES = 'clientes';
+const TABLE_CREDITOS = 'creditos';
+const TABLE_PAGOS = 'pagos';
+const SearchCredit= (nombreCompleto) => {
+    return new Promise((resolve, reject) => {
+        const queryCliente = `
+            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
+            FROM ${TABLE_CLIENTES}
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+        `;
+
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+
+        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+            if (err) return reject('Error al buscar cliente');
+            if (clienteRows.length === 0) return resolve(null);
+
+            const cliente = clienteRows[0];
+            const idCliente = cliente.idCliente;
+
+            const queryCredito = `
+                SELECT idCredito, monto, fechaEntrega
+                FROM ${TABLE_CREDITOS}
+                WHERE idCliente = ? AND estado = 'activo'
+                LIMIT 1
+            `;
+
+            db.query(queryCredito, [idCliente], (err, creditoRows) => {
+                if (err) return reject('Error al buscar crédito');
+
+                const credito = creditoRows[0] || null;
+
+                if (!credito) {
+                    return resolve({ cliente, credito: null, pagos: [] });
+                }
+
+                const queryPagos = `
+                    SELECT numeroSemana, cantidad, estado
+                    FROM ${TABLE_PAGOS}
+                    WHERE idCredito = ? AND estado = 'pagado'
+                    ORDER BY numeroSemana DESC
+                    LIMIT 1
+                `;
+
+                db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
+                    if (err) return reject('Error al buscar pagos');
+
+                    const pagos = pagosRows.length > 0 ? pagosRows : [];
+
+                    return resolve({
+                        cliente,
+                        credito,
+                        pagos
+                    });
+                });
+            });
+        });
+    });
+};
+
+const SearchCollectors = (nombreCompleto) => {
+    return new Promise((resolve, reject) => {
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+
+        const queryCliente = `
+            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono,
+                   clasificacion, tipoCliente, puntos, trabajo, domicilioTrabajo, telefonoTrabajo,
+                   nombreReferencia, domicilioReferencia, telefonoReferencia
+            FROM clientes
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+            LIMIT 1
+        `;
+
+        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+            if (err) return reject('Error al buscar cliente');
+            if (clienteRows.length === 0) return resolve(null);
+
+            const cliente = clienteRows[0];
+            const idCliente = cliente.idCliente;
+
+            // Buscar avales relacionados
+            const queryAvales = `
+                SELECT idAval, idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, telefono,
+                       trabajo, domicilioTrabajo, telefonoTrabajo
+                FROM avales
+                WHERE idCliente = ?
+            `;
+
+            db.query(queryAvales, [idCliente], (err, avalesRows) => {
+                if (err) return reject('Error al buscar avales');
+
+                // Buscar garantías del cliente
+                const queryGarantiasCliente = `
+                    SELECT idGarantia, idCliente, descripcion
+                    FROM garantias_cliente
+                    WHERE idCliente = ?
+                `;
+
+                db.query(queryGarantiasCliente, [idCliente], (err, garantiasClienteRows) => {
+                    if (err) return reject('Error al buscar garantías del cliente');
+
+                    if (avalesRows.length === 0) {
+                        return resolve({
+                            cliente,
+                            avales: [],
+                            garantiasCliente: garantiasClienteRows,
+                            garantiasAval: []
+                        });
+                    }
+
+                    const avalIds = avalesRows.map(a => a.idAval);
+                    
+                    // Buscar garantías de todos los avales relacionados
+                    const queryGarantiasAval = `
+                        SELECT idGarantia, idAval, descripcion
+                        FROM garantias_aval
+                        WHERE idAval IN (?)
+                    `;
+
+                    db.query(queryGarantiasAval, [avalIds], (err, garantiasAvalRows) => {
+                        if (err) return reject('Error al buscar garantías de avales');
+
+                        return resolve({
+                            cliente,
+                            avales: avalesRows,
+                            garantiasCliente: garantiasClienteRows,
+                            garantiasAval: garantiasAvalRows
+                        });
+                    });
+                });
+            });
+        });
+    });
+};
+
+
+module.exports = {
+    SearchCredit, 
+    SearchCollectors
+};
