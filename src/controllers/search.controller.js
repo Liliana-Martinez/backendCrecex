@@ -144,7 +144,7 @@ const searchConsult = (nombreCompleto) => {
                                 CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) AS nombreCompleto, idCliente
                             FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
-        db.query(clientQuery, [nombreCompleto], (err, clientResult) => {
+        db.query(clientQuery, [formattedNombre], (err, clientResult) => {
             if (err) {
                 return reject(err);
             }
@@ -163,18 +163,17 @@ const searchConsult = (nombreCompleto) => {
                                             c.fechaEntrega, 
                                             c.abonoSemanal, 
                                             c.cumplimiento,
-                                            p. numeroSemana
+                                            p.numeroSemana
                                         FROM ${TABLE_CREDITOS} c 
                                         LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
-                                        WHERE idCliente = ? AND c.estado = 'activo'
-                                        ORDER BY p.numeroSemana DESC`;
+                                        WHERE idCliente = ? AND c.estado = 'activo'`;
 
             db.query(currentCreditQuery, [idCliente], (err, currentCreditResult) => {
                 if (err) {
                     return reject(err);
                 }
 
-                const currentCredit = currentCreditResult[0] || null;
+                const currentCredit = currentCreditResult;
 
                 //Buscar el historial crediticio
                 const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
