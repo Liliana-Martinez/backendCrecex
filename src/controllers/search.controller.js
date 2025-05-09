@@ -140,7 +140,9 @@ const searchConsult = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const formattedNombre = `%${nombreCompleto.trim()}%`;
         //Buscar el cliente por nombre
-        const clientQuery = `SELECT * FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
+        const clientQuery = `SELECT
+                                CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) AS nombreCompleto, idCliente
+                            FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
         db.query(clientQuery, [formattedNombre], (err, clientResult) => {
             if (err) {
@@ -155,7 +157,17 @@ const searchConsult = (nombreCompleto) => {
             const idCliente = client.idCliente;
 
             //Buscar el credito actual activo
-            const currentCreditQuery = `SELECT * FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'activo'`;
+            const currentCreditQuery = `SELECT 
+                                            c.monto, 
+                                            c.semanas, 
+                                            c.fechaEntrega, 
+                                            c.abonoSemanal, 
+                                            c.cumplimiento,
+                                            p. numeroSemana
+                                        FROM ${TABLE_CREDITOS} c 
+                                        LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
+                                        WHERE idCliente = ? AND c.estado = 'activo'
+                                        ORDER BY p.numeroSemana DESC`;
 
             db.query(currentCreditQuery, [idCliente], (err, currentCreditResult) => {
                 if (err) {
@@ -165,7 +177,7 @@ const searchConsult = (nombreCompleto) => {
                 const currentCredit = currentCreditResult[0] || null;
 
                 //Buscar el historial crediticio
-                const historyCreditQuery = `SELECT * FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
+                const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
 
                 db.query(historyCreditQuery, [idCliente], (err, creditHistoryResult) => {
                     if (err) {
