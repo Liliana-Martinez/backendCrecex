@@ -142,7 +142,7 @@ const searchConsult = (nombreCompleto) => {
         //Buscar el cliente por nombre
         const clientQuery = `SELECT * FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
-        db.query(clientQuery, [nombreCompleto], (err, clientResult) => {
+        db.query(clientQuery, [formattedNombre], (err, clientResult) => {
             if (err) {
                 return reject(err);
             }
