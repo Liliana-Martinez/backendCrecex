@@ -79,7 +79,6 @@ const SearchCollectors = (nombreCompleto) => {
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
 
-            // Buscar avales relacionados
             const queryAvales = `
                 SELECT idAval, idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, telefono,
                        trabajo, domicilioTrabajo, telefonoTrabajo
@@ -90,7 +89,6 @@ const SearchCollectors = (nombreCompleto) => {
             db.query(queryAvales, [idCliente], (err, avalesRows) => {
                 if (err) return reject('Error al buscar avales');
 
-                // Buscar garantías del cliente
                 const queryGarantiasCliente = `
                     SELECT idGarantia, idCliente, descripcion
                     FROM garantias_cliente
@@ -100,39 +98,73 @@ const SearchCollectors = (nombreCompleto) => {
                 db.query(queryGarantiasCliente, [idCliente], (err, garantiasClienteRows) => {
                     if (err) return reject('Error al buscar garantías del cliente');
 
-                    if (avalesRows.length === 0) {
-                        return resolve({
-                            cliente,
-                            avales: [],
-                            garantiasCliente: garantiasClienteRows,
-                            garantiasAval: []
-                        });
-                    }
-
-                    const avalIds = avalesRows.map(a => a.idAval);
-                    
-                    // Buscar garantías de todos los avales relacionados
-                    const queryGarantiasAval = `
-                        SELECT idGarantia, idAval, descripcion
-                        FROM garantias_aval
-                        WHERE idAval IN (?)
+                    const queryCreditoActivo = `
+                        SELECT idCredito, monto, abonoSemanal
+                        FROM creditos
+                        WHERE idCliente = ? AND estado = 'activo'
+                        ORDER BY idCredito DESC
+                        LIMIT 1
                     `;
 
-                    db.query(queryGarantiasAval, [avalIds], (err, garantiasAvalRows) => {
-                        if (err) return reject('Error al buscar garantías de avales');
+                    db.query(queryCreditoActivo, [idCliente], (err, creditosRows) => {
+                        if (err) return reject('Error al buscar crédito activo');
 
-                        return resolve({
-                            cliente,
-                            avales: avalesRows,
-                            garantiasCliente: garantiasClienteRows,
-                            garantiasAval: garantiasAvalRows
-                        });
+                        const credito = creditosRows[0] || null;
+
+                        if (!credito) {
+                            finalizar(null, []);
+                        } else {
+                            const queryPagos = `
+                                SELECT fechaEsperada
+                                FROM pagos
+                                WHERE idCredito = ?
+                            `;
+
+                            db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
+                                if (err) return reject('Error al buscar pagos');
+                                finalizar(credito, pagosRows);
+                            });
+                        }
+
+                        function finalizar(creditoData, pagosData) {
+                            if (avalesRows.length === 0) {
+                                return resolve({
+                                    cliente,
+                                    avales: [],
+                                    garantiasCliente: garantiasClienteRows,
+                                    garantiasAval: [],
+                                    credito: creditoData,
+                                    pagos: pagosData
+                                });
+                            }
+
+                            const avalIds = avalesRows.map(a => a.idAval);
+                            const queryGarantiasAval = `
+                                SELECT idGarantia, idAval, descripcion
+                                FROM garantias_aval
+                                WHERE idAval IN (?)
+                            `;
+
+                            db.query(queryGarantiasAval, [avalIds], (err, garantiasAvalRows) => {
+                                if (err) return reject('Error al buscar garantías de avales');
+
+                                return resolve({
+                                    cliente,
+                                    avales: avalesRows,
+                                    garantiasCliente: garantiasClienteRows,
+                                    garantiasAval: garantiasAvalRows,
+                                    credito: creditoData,
+                                    pagos: pagosData
+                                });
+                            });
+                        }
                     });
                 });
             });
         });
     });
 };
+
 
 //Busqueda para "consulta" dentro de "Clientes-avales"
 const searchConsult = (nombreCompleto) => {
