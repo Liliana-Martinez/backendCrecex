@@ -59,21 +59,25 @@ const SearchCredit= (nombreCompleto) => {
     });
 };
 
+
 const SearchCollectors = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const formattedNombre = `%${nombreCompleto.trim()}%`;
 
         const queryCliente = `
-            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono,
-                   clasificacion, tipoCliente, puntos, trabajo, domicilioTrabajo, telefonoTrabajo,
-                   nombreReferencia, domicilioReferencia, telefonoReferencia
-            FROM clientes
-            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+            SELECT c.idCliente, c.nombre, c.apellidoPaterno, c.apellidoMaterno, c.edad, c.domicilio,
+                   c.colonia, c.ciudad, c.telefono, c.clasificacion, c.tipoCliente, c.puntos,
+                   c.trabajo, c.domicilioTrabajo, c.telefonoTrabajo,
+                   c.nombreReferencia, c.domicilioReferencia, c.telefonoReferencia,
+                   z.codigoZona, z.promotora
+            FROM clientes c
+            LEFT JOIN zonas z ON c.idZona = z.idZona
+            WHERE CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
             LIMIT 1
         `;
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-            if (err) return reject('Error al buscar cliente');
+            if (err) return reject(`Error al buscar cliente: ${err.message}`);
             if (clienteRows.length === 0) return resolve(null);
 
             const cliente = clienteRows[0];
@@ -164,6 +168,8 @@ const SearchCollectors = (nombreCompleto) => {
         });
     });
 };
+
+
 
 
 //Busqueda para "consulta" dentro de "Clientes-avales"

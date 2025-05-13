@@ -34,99 +34,113 @@ const createNewCredit = (req, res) => {
             if (resultCliente.length === 0) {
                 return res.status(404).json({ error: 'El cliente no existe' });
             }
-            // Cálculo del abono
-            let factor;
-            if (semanasInt === 12) {
-                factor = 1.5;
-            } else if (semanasInt === 16) {
-                factor = 1.583;
-            } else {
-                return res.status(400).json({ error:  true, message:  'Solo se permiten créditos de 12 o 16 semanas' });
-            }
-            const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-            // Validaciones de monto mínimo
-            if (semanasInt === 12 && montoNum < 1000) {
-                return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
-            }
-            if (semanasInt === 16 && montoNum < 4000) {
-                return res.status(400).json({ error:  true, message:  'El monto mínimo para 16 semanas es de $4000' });
-            }
+            // Verificar si el cliente ya tiene un crédito activo
+            const verificarCreditoExistenteQuery = `SELECT COUNT(*) AS total FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'Activo'`;
 
-            // Validación según clasificación
-            let validacionCorrecta = false;
-            switch (clasificacion) {
-                case 'D':
-                    if (semanasInt === 12 && montoNum <= 2000) validacionCorrecta = true;
-                    break;
-                case 'C':
-                    if ((semanasInt === 12 && montoNum <= 4000) || (semanasInt === 16 && montoNum <= 5000)) validacionCorrecta = true;
-                    break;
-                case 'B':
-                    if ((semanasInt === 12 && montoNum <= 6000) || (semanasInt === 16 && montoNum <= 7500)) validacionCorrecta = true;
-                    break;
-                case 'A':
-                    if ((semanasInt === 12 || semanasInt === 16) && montoNum >= 7500) validacionCorrecta = true;
-                    break;
-                default:
-                    return res.status(400).json({ error:  true, message:  'Clasificación del cliente no válida' });
-            }
+            db.query(verificarCreditoExistenteQuery, [idCliente], (errVerif, resultVerif) => {
+                if (errVerif) {
+                    console.error('Error al verificar crédito existente:', errVerif);
+                    return res.status(500).json({ error: true, message: 'Error al verificar si el cliente ya tiene crédito' });
+                }
 
-            if (!validacionCorrecta) {
-                return res.status(400).json({ error:  true, message: 'El monto no cumple con las condiciones de la clasificación' });
-            }
+                if (resultVerif[0].total > 0) {
+                    return res.status(400).json({ error: true, message: 'Este cliente ya ha tenido creditos' });
+                }
 
-            
+                // Cálculo del abono
+                let factor;
+                if (semanasInt === 12) {
+                    factor = 1.5;
+                } else if (semanasInt === 16) {
+                    factor = 1.583;
+                } else {
+                    return res.status(400).json({ error: true, message: 'Solo se permiten créditos de 12 o 16 semanas' });
+                }
 
-            const totalAPagar = montoNum * factor;
-            const abonoSemanal = Math.round(totalAPagar / semanasInt);
+                const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-            const recargosNum = parseFloat(recargos ?? 0);
-            const atrasosNum = parseFloat(atrasos ?? 0);
-            const efectivo = montoNum - recargosNum - atrasosNum;
+                // Validaciones de monto mínimo
+                if (semanasInt === 12 && montoNum < 1000) {
+                    return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
+                }
+                if (semanasInt === 16 && montoNum < 4000) {
+                    return res.status(400).json({ error: true, message: 'El monto mínimo para 16 semanas es de $4000' });
+                }
 
-            const query = `
-                INSERT INTO ${TABLE_CREDITOS} 
-                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
-                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo', ?)
-            `;
+                // Validación según clasificación
+                let validacionCorrecta = false;
+                switch (clasificacion) {
+                    case 'D':
+                        if (semanasInt === 12 && montoNum <= 2000) validacionCorrecta = true;
+                        break;
+                    case 'C':
+                        if ((semanasInt === 12 && montoNum <= 4000) || (semanasInt === 16 && montoNum <= 5000)) validacionCorrecta = true;
+                        break;
+                    case 'B':
+                        if ((semanasInt === 12 && montoNum <= 6000) || (semanasInt === 16 && montoNum <= 7500)) validacionCorrecta = true;
+                        break;
+                    case 'A':
+                        if ((semanasInt === 12 || semanasInt === 16) && montoNum <= 7500) validacionCorrecta = true;
+                        break;
+                    default:
+                        return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
+                }
 
-            db.query(
-                query,
-                [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal, efectivo],
-                (err, result) => {
-                    if (err) {
-                        console.error('Error al registrar crédito:', err);
-                        return res.status(500).json({ error:  true, message:  'Error al guardar el crédito' });
-                    }
+                if (!validacionCorrecta) {
+                    return res.status(400).json({ error: true, message: 'El monto no cumple con las condiciones de la clasificación' });
+                }
 
-                    const idCredito = result.insertId;
-                    const pagosQuery = `
-                        INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
-                        VALUES
-                    `;
+                const totalAPagar = montoNum * factor;
+                const abonoSemanal = Math.round(totalAPagar / semanasInt);
 
-                    let pagosValues = [];
-                    for (let i = 0; i < semanasInt; i++) {
-                        const fechaPago = new Date(primerSábadoSiguiente);
-                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
-                        const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
-                        pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
-                    }
+                const recargosNum = parseFloat(recargos ?? 0);
+                const atrasosNum = parseFloat(atrasos ?? 0);
+                const efectivo = montoNum - recargosNum - atrasosNum;
 
-                    db.query(pagosQuery + pagosValues.join(', '), (err3) => {
-                        if (err3) {
-                            console.error('Error al registrar pagos:', err3);
-                            return res.status(500).json({ error: 'Error al guardar los pagos' });
+                const query = `
+                    INSERT INTO ${TABLE_CREDITOS} 
+                    (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
+                    VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo', ?)
+                `;
+
+                db.query(
+                    query,
+                    [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal, efectivo],
+                    (err, result) => {
+                        if (err) {
+                            console.error('Error al registrar crédito:', err);
+                            return res.status(500).json({ error: true, message: 'Error al guardar el crédito' });
                         }
 
-                        return res.status(201).json({
-                            abonoSemanal,
-                            efectivo
+                        const idCredito = result.insertId;
+                        const pagosQuery = `
+                            INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
+                            VALUES
+                        `;
+
+                        let pagosValues = [];
+                        for (let i = 0; i < semanasInt; i++) {
+                            const fechaPago = new Date(primerSábadoSiguiente);
+                            fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
+                            const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
+                            pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
+                        }
+
+                        db.query(pagosQuery + pagosValues.join(', '), (err3) => {
+                            if (err3) {
+                                console.error('Error al registrar pagos:', err3);
+                                return res.status(500).json({ error: 'Error al guardar los pagos' });
+                            }
+
+                            return res.status(201).json({
+                                abonoSemanal,
+                                efectivo
+                            });
                         });
-                    });
-                }
-            );
+                    }
+                );
+            });
         });
     }
 };
