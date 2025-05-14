@@ -266,13 +266,10 @@ const createRenewCredit = (req, res) => {
 
                 const idCredito = result2.insertId;
 
-                // Generar pagos esperados
-                const pagosQuery = `
-                    INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
-                    VALUES
-                `;
-
+                // Generar pagos esperados del nuevo crédito
+                const pagosQuery = `INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado) VALUES `;
                 let pagosValues = [];
+
                 for (let i = 0; i < semanasInt; i++) {
                     const fechaPago = new Date(primerSábadoSiguiente);
                     fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
@@ -283,19 +280,45 @@ const createRenewCredit = (req, res) => {
                 db.query(pagosQuery + pagosValues.join(', '), (err3) => {
                     if (err3) {
                         console.error('Error al registrar pagos:', err3);
-                        return res.status(500).json({ error: true, message: 'Error al guardar los pagos' });
+                        return res.status(500).json({ error: true, message: 'Error al guardar los pagos del nuevo crédito' });
                     }
 
-                    return res.status(201).json({
-                        abonoSemanal,
-                        efectivo,
-                        mensaje: 'Crédito de renovación registrado correctamente'
+                    // Marcar semanas faltantes del crédito anterior como pagadas
+                    const updatePagosAnteriores = `
+                        UPDATE pagos
+                        SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = 'Pagado'
+                        WHERE idCredito = ? AND estado = 'Pendiente'
+                        ORDER BY numeroSemana
+                        LIMIT ?
+                    `;
+
+                    db.query(updatePagosAnteriores, [abonoAnterior, creditoActual.idCredito, semanasRestantes], (err4) => {
+                        if (err4) {
+                            console.error('Error al actualizar pagos anteriores:', err4);
+                            return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudieron marcar como pagadas las semanas anteriores' });
+                        }
+
+                        // Cambiar estado del crédito anterior a 'Pagado'
+                        const updateCreditoAnterior = `UPDATE creditos SET estado = 'Pagado' WHERE idCredito = ?`;
+                        db.query(updateCreditoAnterior, [creditoActual.idCredito], (err5) => {
+                            if (err5) {
+                                console.error('Error al actualizar estado del crédito anterior:', err5);
+                                return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudo actualizar el estado del crédito anterior' });
+                            }
+
+                            return res.status(201).json({
+                                abonoSemanal,
+                                efectivo,
+                                mensaje: 'Crédito de renovación registrado. Semanas anteriores pagadas y crédito anterior marcado como Pagado.'
+                            });
+                        });
                     });
                 });
             });
         });
     });
 };
+
 
 
 

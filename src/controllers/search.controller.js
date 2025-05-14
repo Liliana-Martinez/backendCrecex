@@ -2,7 +2,7 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
-const SearchCredit= (nombreCompleto) => {
+const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
@@ -20,7 +20,7 @@ const SearchCredit= (nombreCompleto) => {
             const idCliente = cliente.idCliente;
 
             const queryCredito = `
-                SELECT idCredito, monto, fechaEntrega
+                SELECT idCredito, monto, fechaEntrega, semanas, abonoSemanal
                 FROM ${TABLE_CREDITOS}
                 WHERE idCliente = ? AND estado = 'activo'
                 LIMIT 1
@@ -58,6 +58,7 @@ const SearchCredit= (nombreCompleto) => {
         });
     });
 };
+
 
 
 const SearchCollectors = (nombreCompleto) => {
