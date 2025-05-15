@@ -81,7 +81,7 @@ const createNewCredit = (req, res) => {
                         if ((semanasInt === 12 && montoNum <= 6000) || (semanasInt === 16 && montoNum <= 7500)) validacionCorrecta = true;
                         break;
                     case 'A':
-                        if ((semanasInt === 12 || semanasInt === 16) && montoNum <= 7500) validacionCorrecta = true;
+                        if ((semanasInt === 12 || semanasInt === 16) && montoNum >0) validacionCorrecta = true;
                         break;
                     default:
                         return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
@@ -238,7 +238,7 @@ const createRenewCredit = (req, res) => {
                     if ((semanasInt === 12 && montoNum <= 6000) || (semanasInt === 16 && montoNum <= 7500)) valido = true;
                     break;
                 case 'A':
-                    if (montoNum <= 7500) valido = true;
+                    if (montoNum >0) valido = true;
                     break;
                 default:
                     return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
@@ -318,13 +318,152 @@ const createRenewCredit = (req, res) => {
         });
     });
 };
+const createAdditionalCredit = (req, res) => {
+    const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
 
+    if (!idCliente || !monto || !semanas || !horarioEntrega) {
+        return res.status(400).json({ error: 'Faltan datos obligatorios para registrar el crédito' });
+    }
 
+    const hoy = new Date();
+    const primerSábadoSiguiente = new Date(hoy);
+    const diasHastaSábado = (6 - hoy.getDay() + 7) % 7;
+    primerSábadoSiguiente.setDate(hoy.getDate() + diasHastaSábado);
 
+    const semanasInt = parseInt(semanas, 10);
+    const fechaVencimiento = new Date(primerSábadoSiguiente);
+    fechaVencimiento.setDate(primerSábadoSiguiente.getDate() + semanasInt * 7);
+    const fechaVencimientoF = fechaVencimiento.toISOString().split('T')[0];
 
-const createAdditionalCredit = (req, res) =>{
+    const montoNum = parseFloat(monto);
 
-}
+    const buscarClienteQuery = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
+
+    db.query(buscarClienteQuery, [idCliente], (errCliente, resultCliente) => {
+        if (errCliente) {
+            console.error('Error al buscar cliente:', errCliente);
+            return res.status(500).json({ error: 'Error al verificar la clasificación del cliente' });
+        }
+
+        if (resultCliente.length === 0) {
+            return res.status(404).json({ error: 'El cliente no existe' });
+        }
+
+        const clasificacion = resultCliente[0].clasificacion.toUpperCase();
+
+        // Verificar cuántos créditos activos tiene y sumar los montos
+        const creditosActivosQuery = `SELECT monto FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'Activo'`;
+
+        db.query(creditosActivosQuery, [idCliente], (errCreditos, resultCreditos) => {
+            if (errCreditos) {
+                console.error('Error al verificar créditos activos:', errCreditos);
+                return res.status(500).json({ error: 'Error al verificar créditos activos' });
+            }
+
+            if (resultCreditos.length >= 2) {
+                return res.status(400).json({ error: true, message: 'Solo se permiten hasta 2 créditos activos' });
+            }
+
+            const sumaMontos = resultCreditos.reduce((sum, row) => sum + parseFloat(row.monto), 0);
+            const totalPropuesto = sumaMontos + montoNum;
+
+            // Tope por clasificación
+            let topeMaximo = 0;
+            switch (clasificacion) {
+                case 'D':
+                    topeMaximo = 2000;
+                    break;
+                case 'C':
+                    topeMaximo = 4000;
+                    break;
+                case 'B':
+                    topeMaximo = 7500;
+                    break;
+                case 'A':
+                    topeMaximo = Infinity;
+                    break;
+                default:
+                    return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
+            }
+
+            if (totalPropuesto > topeMaximo) {
+                return res.status(400).json({
+                    error: true,
+                    message: `Supera el límite permitido para clasificación ${clasificacion}`
+                });
+            }
+
+            // Validaciones de semanas y montos mínimos
+            if (semanasInt === 12 && montoNum < 1000) {
+                return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
+            }
+            if (semanasInt === 16 && montoNum < 4000) {
+                return res.status(400).json({ error: true, message: 'El monto mínimo para 16 semanas es de $4000' });
+            }
+
+            // Factor para cálculo de pagos
+            let factor;
+            if (semanasInt === 12) {
+                factor = 1.5;
+            } else if (semanasInt === 16) {
+                factor = 1.583;
+            } else {
+                return res.status(400).json({ error: true, message: 'Solo se permiten créditos de 12 o 16 semanas' });
+            }
+
+            const totalAPagar = montoNum * factor;
+            const abonoSemanal = Math.round(totalAPagar / semanasInt);
+
+            const recargosNum = parseFloat(recargos ?? 0);
+            const atrasosNum = parseFloat(atrasos ?? 0);
+            const efectivo = montoNum - recargosNum - atrasosNum;
+
+            const query = `
+                INSERT INTO ${TABLE_CREDITOS} 
+                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
+                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'adicional', ?)
+            `;
+
+            db.query(
+                query,
+                [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal, efectivo],
+                (errInsert, resultInsert) => {
+                    if (errInsert) {
+                        console.error('Error al registrar crédito adicional:', errInsert);
+                        return res.status(500).json({ error: true, message: 'Error al guardar el crédito adicional' });
+                    }
+
+                    const idCredito = resultInsert.insertId;
+                    const pagosQuery = `
+                        INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
+                        VALUES
+                    `;
+
+                    let pagosValues = [];
+                    for (let i = 0; i < semanasInt; i++) {
+                        const fechaPago = new Date(primerSábadoSiguiente);
+                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
+                        const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
+                        pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
+                    }
+
+                    db.query(pagosQuery + pagosValues.join(', '), (errPagos) => {
+                        if (errPagos) {
+                            console.error('Error al registrar pagos del crédito adicional:', errPagos);
+                            return res.status(500).json({ error: 'Error al guardar los pagos del crédito adicional' });
+                        }
+
+                        return res.status(201).json({
+                            abonoSemanal,
+                            efectivo,
+                            message: 'Crédito adicional registrado correctamente'
+                        });
+                    });
+                }
+            );
+        });
+    });
+};
 
 
 module.exports = {
