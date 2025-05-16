@@ -2,6 +2,17 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
+
+// "Helper"
+function queryAsync(sql, params = []) {
+return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+        });
+    });
+}
+
 const SearchCredit= (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
@@ -134,66 +145,139 @@ const SearchCollectors = (nombreCompleto) => {
     });
 };
 
-//Busqueda para "consulta" dentro de "Clientes-avales"
-const searchConsult = (nombreCompleto) => {
-    console.log('nombre completo en searchConsult: ', nombreCompleto);
-    return new Promise((resolve, reject) => {
-        const formattedNombre = `%${nombreCompleto.trim()}%`;
+async function searchConsult(nombreCompleto) {
+    try {
+
+        console.log('Nombre completo dentro de searchConsult: ', nombreCompleto);
+        const formattedName = `%${nombreCompleto.trim()}%`;
+
         //Buscar el cliente por nombre
-        const clientQuery = `SELECT
-                                CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) AS nombreCompleto, idCliente
-                            FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
+        const queryToFindClient = `SELECT CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) AS nombreCompleto, idCliente FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
-        db.query(clientQuery, [formattedNombre], (err, clientResult) => {
-            if (err) {
-                return reject(err);
+        const clientResult = await queryAsync(queryToFindClient, [formattedName]);
+
+        if (clientResult.length === 0) {
+            return { message: 'Cliente no encontrado' };
+        }
+
+        const client = clientResult[0];
+        const idCliente = client.idCliente;
+
+        console.log('ID del cliente encontrado: ', idCliente);
+        //Obtener cuantos creditos ha tenido/tiene el cliente
+        const queryToGetTotalCredits = `SELECT COUNT(*) AS totalCredits FROM ${TABLE_CREDITOS} WHERE idCliente = ?`;
+        const totalCreditsResult = await queryAsync(queryToGetTotalCredits, [idCliente]);
+        const totalCredits = totalCreditsResult[0].totalCredits;
+        console.log('Total de creditos del cliente: ', totalCredits);
+        //Consultar el resto de datos del credito actual
+        const currentCreditQuery = `SELECT
+                                        c.monto,
+                                        c.semanas,
+                                        c.fechaEntrega,
+                                        c.abonoSemanal,
+                                        c.cumplimiento,
+                                        p.numeroSemana
+                                    FROM ${TABLE_CREDITOS} c
+                                    LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
+                                    WHERE idCliente = ? AND c.estado = 'activo'`;
+        const currentCredit = await queryAsync(currentCreditQuery, [idCliente]);
+
+        //Obtener el historial crediticio del cliente
+        const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
+        const creditHistory = await queryAsync(historyCreditQuery, [idCliente]);
+        
+        return {
+            client,
+            totalCredits, //Cantidad de creditos que tiene el cliente
+            currentCredit,
+            creditHistory
+        }
+    } catch(error) {
+        console.log('Error al buscar el cliente: ', error);
+        throw error;
+    }
+}
+
+async function searchModify(nombreCompleto) {
+    try {
+        const formattedName = `%${nombreCompleto.trim()}%`;
+
+        //Buscar el cliente por nombre
+        const queryForClientData = `SELECT
+                                        c.idCliente,
+                                        c.nombre,
+                                        c.apellidoPaterno,
+                                        c.apellidoMaterno,
+                                        c.edad,
+                                        c.domicilio,
+                                        c.colonia,
+                                        c.ciudad,
+                                        c.telefono,
+                                        c.clasificacion,
+                                        z.codigoZona,
+                                        c.trabajo,
+                                        c.domicilioTrabajo,
+                                        c.telefonoTrabajo,
+                                        c.nombreReferencia,
+                                        c.domicilioReferencia,
+                                        c.telefonoReferencia,
+                                        GROUP_CONCAT(g.descripcion ORDER BY g.idGarantia SEPARATOR '|') AS garantias
+                                    FROM ${TABLE_CLIENTES} c 
+                                    LEFT JOIN garantias_cliente g ON c.idCliente = g.idCliente
+                                    LEFT JOIN zonas z ON c.idZona = z.idZona 
+                                    WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? 
+                                    GROUP BY c.idCliente
+                                    LIMIT 1`;
+
+        const clientDataResult = await queryAsync(queryForClientData, [formattedName]);
+
+        if (clientDataResult.length === 0) {
+            return { message: 'Cliente no encontrado' };
+        }
+
+        const clientDataRow = clientDataResult[0];
+        const idCliente = clientDataRow.idCliente;
+
+        //Pasar a un array las garantias
+        const garantiasArray = clientDataRow.garantias ? clientDataRow.garantias.split('|') : [];
+        
+        const clientData = {
+            name: clientDataRow.nombre,
+            paternalLn: clientDataRow.apellidoPaterno,
+            maternalLn: clientDataRow.apellidoMaterno,
+            age: clientDataRow.edad,
+            address: clientDataRow.domicilio,
+            colonia: clientDataRow.colonia,
+            city: clientDataRow.ciudad,
+            phone: clientDataRow.telefono,
+            classification: clientDataRow.clasificacion,
+            zone: clientDataRow.codigoZona,
+            nameJob: clientDataRow.trabajo,
+            addressJob: clientDataRow.domicilioTrabajo,
+            phoneJob: clientDataRow.telefonoTrabajo,
+            nameReference: clientDataRow.nombreReferencia,
+            addressReference: clientDataRow.domicilioReferencia,
+            phoneReference: clientDataRow.telefonoReferencia,
+            garantias: {
+                garantiaUno:  garantiasArray[0] || '',
+                garantiaDos:  garantiasArray[1] || '',
+                garantiaTres: garantiasArray[2] || ''
             }
+        };
 
-            if (clientResult.length === 0) {
-                return resolve({ message: 'Cliente no encontrado'});
-            }
+        console.log('Id del cliente dentro de searchModify: ', idCliente);
 
-            const client = clientResult[0];
-            const idCliente = client.idCliente;
+        return {
+            clientData
+        }
+    } catch(error) {
+        throw error;
+    }
+}
 
-            //Buscar el credito actual activo
-            const currentCreditQuery = `SELECT 
-                                            c.monto, 
-                                            c.semanas, 
-                                            c.fechaEntrega, 
-                                            c.abonoSemanal, 
-                                            c.cumplimiento,
-                                            p.numeroSemana
-                                        FROM ${TABLE_CREDITOS} c 
-                                        LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
-                                        WHERE idCliente = ? AND c.estado = 'activo'`;
-
-            db.query(currentCreditQuery, [idCliente], (err, currentCreditResult) => {
-                if (err) {
-                    return reject(err);
-                }
-
-                const currentCredit = currentCreditResult;
-
-                //Buscar el historial crediticio
-                const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
-
-                db.query(historyCreditQuery, [idCliente], (err, creditHistoryResult) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve({
-                        client,
-                        currentCredit,
-                        creditHistory: creditHistoryResult
-                    });
-                });
-            });
-        });
-    });
-};
 module.exports = {
     SearchCredit, 
     SearchCollectors,
-    searchConsult
+    searchConsult,
+    searchModify
 };

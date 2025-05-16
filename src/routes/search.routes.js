@@ -20,10 +20,24 @@ router.post('/cliente', async (req, res) => {
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
             case 'consult':
-                result = await searchController.searchConsult(nombreCompleto);
+                try {
+                    const resultado = await searchController.searchConsult(nombreCompleto);
+                    res.json(resultado);
+                } catch(error) {
+                    console.error('Error al consultar el cliente: ', error);
+                    res.status(500).json({ error: 'Error en la busqueda del cliente' });
+                }
                 break;
             case 'modify':
-                result = await searchController.SearchModify(nombreCompleto);
+                try {
+                    const resultado = await searchController.searchModify(nombreCompleto);
+                    res.json(resultado);
+                    console.log('Resultado: ', resultado);
+                } catch(error) {
+                    console.log('Error al intentar modificar datos del cliente', error);
+                    res.status(500).json({ error: 'Error al modificar datos del cliente' });
+
+                }
                 break;
             default:
                 return res.status(400).json({ message: 'Módulo no reconocido' });
