@@ -11,7 +11,7 @@ return new Promise((resolve, reject) => {
             resolve(results);
         });
     });
-}
+}  
 
 const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
@@ -74,9 +74,12 @@ const SearchCredit = (nombreCompleto) => {
     });
 };
 
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> acd3658cfd5f2babd16d6fa30404282ec3296d9e
 const SearchCollectors = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const formattedNombre = `%${nombreCompleto.trim()}%`;
@@ -188,9 +191,6 @@ const SearchCollectors = (nombreCompleto) => {
     });
 };
 
-
-
-
 async function searchConsult(nombreCompleto) {
     try {
 
@@ -203,7 +203,7 @@ async function searchConsult(nombreCompleto) {
         const clientResult = await queryAsync(queryToFindClient, [formattedName]);
 
         if (clientResult.length === 0) {
-            return { message: 'Cliente no encontrado' };
+            throw new Error('Cliente no encontrado.');
         }
 
         const client = clientResult[0];
@@ -215,6 +215,7 @@ async function searchConsult(nombreCompleto) {
         const totalCreditsResult = await queryAsync(queryToGetTotalCredits, [idCliente]);
         const totalCredits = totalCreditsResult[0].totalCredits;
         console.log('Total de creditos del cliente: ', totalCredits);
+
         //Consultar el resto de datos del credito actual
         const currentCreditQuery = `SELECT
                                         c.monto,
@@ -227,6 +228,7 @@ async function searchConsult(nombreCompleto) {
                                     LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
                                     WHERE idCliente = ? AND c.estado = 'activo'`;
         const currentCredit = await queryAsync(currentCreditQuery, [idCliente]);
+        console.log('Credito actual: ', currentCredit);
 
         //Obtener el historial crediticio del cliente
         const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
