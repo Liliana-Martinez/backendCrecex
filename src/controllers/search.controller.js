@@ -74,12 +74,6 @@ const SearchCredit = (nombreCompleto) => {
     });
 };
 
-<<<<<<< HEAD
-
-
-
-=======
->>>>>>> acd3658cfd5f2babd16d6fa30404282ec3296d9e
 const SearchCollectors = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const formattedNombre = `%${nombreCompleto.trim()}%`;
