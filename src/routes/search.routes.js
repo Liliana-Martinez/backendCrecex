@@ -22,32 +22,32 @@ router.post('/cliente', async (req, res) => {
             case 'consult':
                 try {
                     const resultado = await searchController.searchConsult(nombreCompleto);
-                    res.json(resultado);
-                } catch(error) {
+                    return res.json(resultado);
+                } catch (error) {
                     console.error('Error al consultar el cliente: ', error);
-                    res.status(500).json({ error: 'Error en la busqueda del cliente' });
+                    return res.status(500).json({ error: 'Error en la búsqueda del cliente' });
                 }
-                break;
             case 'modify':
                 try {
                     const resultado = await searchController.searchModify(nombreCompleto);
-                    res.json(resultado);
                     console.log('Resultado: ', resultado);
-                } catch(error) {
-                    console.log('Error al intentar modificar datos del cliente', error);
-                    res.status(500).json({ error: 'Error al modificar datos del cliente' });
-
+                    return res.json(resultado);
+                } catch (error) {
+                    console.error('Error al modificar datos del cliente', error);
+                    return res.status(500).json({ error: 'Error al modificar datos del cliente' });
                 }
-                break;
             default:
                 return res.status(400).json({ message: 'Módulo no reconocido' });
         }
 
-        res.status(200).json(result);
+        return res.status(200).json(result);
+
     } catch (error) {
         console.error('Error al procesar la solicitud:', error);
 
-        res.status(500).json({ message: 'Error en el servidor' });
+        // Aquí usamos el código personalizado si existe, si no mandamos 500
+        return res.status(error.code || 500).json({ message: error.message || 'Error en el servidor' });
     }
 });
+
 module.exports = router;

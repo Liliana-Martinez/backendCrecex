@@ -13,7 +13,7 @@ return new Promise((resolve, reject) => {
     });
 }
 
-const SearchCredit= (nombreCompleto) => {
+const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
@@ -24,8 +24,12 @@ const SearchCredit= (nombreCompleto) => {
         const formattedNombre = `%${nombreCompleto.trim()}%`;
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-            if (err) return reject('Error al buscar cliente');
-            if (clienteRows.length === 0) return resolve(null);
+            if (err) return reject({ code: 500, message: 'Error al buscar cliente' });
+
+            if (clienteRows.length === 0) {
+                return reject({ code: 404, message: 'Cliente no encontrado' });
+
+            }
 
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
@@ -38,7 +42,7 @@ const SearchCredit= (nombreCompleto) => {
             `;
 
             db.query(queryCredito, [idCliente], (err, creditoRows) => {
-                if (err) return reject('Error al buscar crédito');
+                if (err) return reject({ code: 500, message: 'Error al buscar crédito' });
 
                 const credito = creditoRows[0] || null;
 
@@ -55,7 +59,7 @@ const SearchCredit= (nombreCompleto) => {
                 `;
 
                 db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
-                    if (err) return reject('Error al buscar pagos');
+                    if (err) return reject({ code: 500, message: 'Error al buscar pagos' });
 
                     const pagos = pagosRows.length > 0 ? pagosRows : [];
 
@@ -69,6 +73,7 @@ const SearchCredit= (nombreCompleto) => {
         });
     });
 };
+
 
 
 
@@ -90,7 +95,9 @@ const SearchCollectors = (nombreCompleto) => {
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
             if (err) return reject(`Error al buscar cliente: ${err.message}`);
-            if (clienteRows.length === 0) return resolve(null);
+            if (clienteRows.length === 0) {
+                return reject({ code: 404, message: 'Cliente no encontrado' });
+            }
 
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
