@@ -9,7 +9,6 @@ const zoneRoutes = require('./routes/zones.routes');
 
 const creditsRouter = require('./routes/credits.routes');
 const searchRoutes = require('./routes/search.routes');
-const paymentsRouter = require('./routes/payments.routes');
 const creditBureauRouter = require('./routes/credit-bureau.routes');
 const app = express(); //Crea instancia de express que es la app del servidor
 
@@ -24,7 +23,6 @@ app.use(cors());
 app.use('/api/auth', authRoutes);
 app.use('/api/clients-guarantors', clienGrntRoutes);
 app.use('/api/credits', creditsRouter);
-app.use('/api/payments', paymentsRouter);
 app.use('/api/zones', zoneRoutes);
 app.use('/api/credit-bureau', creditBureauRouter);
 app.use('/api/search', searchRoutes);
