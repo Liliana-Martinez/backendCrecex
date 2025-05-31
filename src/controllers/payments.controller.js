@@ -22,6 +22,7 @@ const getClientsFromZone = (idZona) => {
     const query = `
       SELECT 
         CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
+        c.idCliente,
         c.clasificacion,
         cr.fechaEntrega,
         cr.fechaVencimiento,
