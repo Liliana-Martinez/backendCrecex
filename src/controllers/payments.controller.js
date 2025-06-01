@@ -4,9 +4,6 @@ const TABLE_ZONES = 'zonas';
 const TABLE_CLIENTES = 'clientes'
 const TABLE_CREDITOS = 'creditos';
 
-const db = require('./db'); // ajusta la ruta a tu conexión de base de datos
-
-// Función para calcular atrasos, adelantos y falla para cada cliente
 async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
     return new Promise((res, rej) => {
@@ -14,7 +11,9 @@ async function calcularPagos(clientes, fechaEsperada) {
         SELECT cantidad, cantidadPagada, fechaEsperada AS pagoFechaEsperada, estado
         FROM pagos
         WHERE idCredito = ?
+        ORDER BY fechaEsperada
       `;
+
       db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
         if (err) return rej(err);
 
@@ -24,30 +23,29 @@ async function calcularPagos(clientes, fechaEsperada) {
         let falla = 0;
 
         let esperadoHastaHoy = 0;
-        let pagadoHastaHoy = 0;
+        let pagadoTotal = 0;
 
         pagos.forEach(p => {
+          pagadoTotal += p.cantidadPagada ?? 0;
           if (p.pagoFechaEsperada <= fechaEsperada) {
             esperadoHastaHoy += p.cantidad ?? 0;
-            pagadoHastaHoy += p.cantidadPagada ?? 0;
           }
         });
 
-        if (pagadoHastaHoy < esperadoHastaHoy) {
-          atraso = esperadoHastaHoy - pagadoHastaHoy;
-        } else if (pagadoHastaHoy > esperadoHastaHoy) {
-          adelanto = pagadoHastaHoy - esperadoHastaHoy;
+        if (pagadoTotal < esperadoHastaHoy) {
+          atraso = esperadoHastaHoy - pagadoTotal;
+        } else if (pagadoTotal > esperadoHastaHoy) {
+          adelanto = pagadoTotal - esperadoHastaHoy;
         }
 
-        const pagoSemanaActual = pagos.find(p => p.pagoFechaEsperada === fechaEsperada);
-
-        const estaPagadaSemanaActual = pagoSemanaActual && (
-          pagoSemanaActual.estado === 'Pagado' ||
-          pagoSemanaActual.estado === 'PagadoAtrasado' ||
-          pagoSemanaActual.estado === 'Adelantado'
+        // Verificar si la semana de fechaEsperada ya fue cubierta (por pago normal o adelantado)
+        const semanaEsperada = pagos.find(p =>
+          p.pagoFechaEsperada === fechaEsperada &&
+          ['pagado', 'adelantado', 'Pagado', 'Adelantado'].includes(p.estado.toLowerCase())
         );
 
-        if (!estaPagadaSemanaActual) {
+        if (!semanaEsperada) {
+          // Verificar si hay suficiente adelanto para cubrir esta semana
           if (adelanto >= montoSemanal) {
             adelanto -= montoSemanal;
           } else {
@@ -68,9 +66,11 @@ async function calcularPagos(clientes, fechaEsperada) {
   return results;
 }
 
+
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
 
+  // Calcular el último sábado
   const getLastSaturday = () => {
     const today = new Date();
     const day = today.getDay(); // 0 = domingo, 6 = sábado
@@ -120,7 +120,6 @@ const getClientsFromZone = (idZona) => {
       }
 
       try {
-        // Aquí calculamos atraso, adelanto y falla para cada cliente
         const resultadosConCalculos = await calcularPagos(results, fechaEsperada);
         resolve(resultadosConCalculos);
       } catch (err) {
@@ -129,6 +128,7 @@ const getClientsFromZone = (idZona) => {
     });
   });
 };
+
 
 
 
