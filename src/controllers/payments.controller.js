@@ -1,6 +1,6 @@
 const db = require('../db');
 const TABLE_ZONES = 'zonas';
-const TABLE_CLIENTES = 'clientes'
+const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 
 async function calcularPagos(clientes, fechaEsperada) {
@@ -37,14 +37,12 @@ async function calcularPagos(clientes, fechaEsperada) {
           adelanto = pagadoTotal - esperadoHastaHoy;
         }
 
-        // Verificar si la semana de fechaEsperada ya fue cubierta (por pago normal o adelantado)
         const semanaEsperada = pagos.find(p =>
           p.pagoFechaEsperada === fechaEsperada &&
           ['pagado', 'adelantado', 'Pagado', 'Adelantado'].includes(p.estado.toLowerCase())
         );
 
         if (!semanaEsperada) {
-          // Verificar si hay suficiente adelanto para cubrir esta semana
           if (adelanto >= montoSemanal) {
             adelanto -= montoSemanal;
           } else {
@@ -60,19 +58,21 @@ async function calcularPagos(clientes, fechaEsperada) {
         });
       });
     });
+  }));
 
+  return results;
+}
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
 
-  // Calcular el último sábado
   const getLastSaturday = () => {
     const today = new Date();
-    const day = today.getDay(); // 0 = domingo, 6 = sábado
+    const day = today.getDay();
     const diff = day === 6 ? 0 : day + 1;
     const lastSaturday = new Date(today);
     lastSaturday.setDate(today.getDate() - diff);
-    return lastSaturday.toISOString().split('T')[0]; // formato YYYY-MM-DD
+    return lastSaturday.toISOString().split('T')[0];
   };
 
   const fechaEsperada = getLastSaturday();
@@ -102,7 +102,6 @@ const getClientsFromZone = (idZona) => {
         AND p.fechaEsperada = ?
       WHERE c.idZona = ?
         AND cr.estado = 'Activo'
-        AND p.numeroSemana >= 1
     `;
 
     db.query(query, [fechaEsperada, idZona], async (error, results) => {
@@ -123,8 +122,6 @@ const getClientsFromZone = (idZona) => {
     });
   });
 };
-
-
 
 module.exports = {
   getClientsFromZone,
