@@ -7,7 +7,7 @@ async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
     return new Promise((res, rej) => {
       const pagosQuery = `
-        SELECT cantidad, cantidadPagada, fechaEsperada AS pagoFechaEsperada, estado
+        SELECT cantidad, cantidadPagada, fechaEsperada, fechaPagada, estado
         FROM pagos
         WHERE idCredito = ?
         ORDER BY fechaEsperada
@@ -16,39 +16,7 @@ async function calcularPagos(clientes, fechaEsperada) {
       db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
         if (err) return rej(err);
 
-        const montoSemanal = cliente.montoSemanal;
-        let atraso = 0;
-        let adelanto = 0;
-        let falla = 0;
-
-        let esperadoHastaHoy = 0;
-        let pagadoTotal = 0;
-
-        pagos.forEach(p => {
-          pagadoTotal += p.cantidadPagada ?? 0;
-          if (p.pagoFechaEsperada <= fechaEsperada) {
-            esperadoHastaHoy += p.cantidad ?? 0;
-          }
-        });
-
-        if (pagadoTotal < esperadoHastaHoy) {
-          atraso = esperadoHastaHoy - pagadoTotal;
-        } else if (pagadoTotal > esperadoHastaHoy) {
-          adelanto = pagadoTotal - esperadoHastaHoy;
-        }
-
-        const semanaEsperada = pagos.find(p =>
-          p.pagoFechaEsperada === fechaEsperada &&
-          ['pagado', 'adelantado', 'Pagado', 'Adelantado'].includes(p.estado.toLowerCase())
-        );
-
-        if (!semanaEsperada) {
-          if (adelanto >= montoSemanal) {
-            adelanto -= montoSemanal;
-          } else {
-            falla = montoSemanal;
-          }
-        }
+        const { atraso, adelanto, falla } = calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
 
         res({
           ...cliente,
@@ -62,6 +30,73 @@ async function calcularPagos(clientes, fechaEsperada) {
 
   return results;
 }
+
+function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
+  const ref = new Date(fechaReferencia);
+  let adelantoDisponible = 0;
+  let atraso = 0;
+  let falla = 0;
+
+  pagos.sort((a, b) => new Date(a.fechaEsperada) - new Date(b.fechaEsperada));
+
+  pagos.forEach(pago => {
+    const cantidad = Number(pago.cantidad ?? 0);
+    const pagado = Number(pago.cantidadPagada ?? 0);
+    const estado = (pago.estado ?? '').toLowerCase();
+    const fechaEsperada = new Date(pago.fechaEsperada);
+    const fechaPagada = pago.fechaPagada && pago.fechaPagada !== '0000-00-00'
+      ? new Date(pago.fechaPagada)
+      : null;
+
+    const mismaFecha = fechaEsperada.toISOString().slice(0, 10) === ref.toISOString().slice(0, 10);
+
+    if (fechaEsperada < ref) {
+      if (estado === 'pendiente' || estado === 'incompleto') {
+        let falta = cantidad - pagado;
+        if (adelantoDisponible >= falta) {
+          adelantoDisponible -= falta;
+        } else {
+          atraso += falta - adelantoDisponible;
+          adelantoDisponible = 0;
+        }
+      }
+    } else if (mismaFecha) {
+      if (estado === 'pendiente') {
+        if (adelantoDisponible >= cantidad) {
+          adelantoDisponible -= cantidad;
+        } else {
+          falla += cantidad - adelantoDisponible;
+          adelantoDisponible = 0;
+        }
+      } else if (estado === 'incompleto') {
+        let falta = cantidad - pagado;
+        if (adelantoDisponible >= falta) {
+          adelantoDisponible -= falta;
+        } else {
+          falla += falta - adelantoDisponible;
+          adelantoDisponible = 0;
+        }
+      }
+    } else if (fechaEsperada > ref) {
+      if (
+        estado === 'adelantado' ||
+        (estado === 'pagado' && fechaPagada && fechaPagada < fechaEsperada)
+      ) {
+        adelantoDisponible += pagado;
+      }
+    }
+  });
+
+  return {
+    atraso,
+    adelanto: adelantoDisponible,
+    falla
+  };
+}
+
+
+
+
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
@@ -125,5 +160,6 @@ const getClientsFromZone = (idZona) => {
 
 module.exports = {
   getClientsFromZone,
-  calcularPagos
+  calcularPagos, 
+  calcularEstadoDePagosOrdenado
 };
