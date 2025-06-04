@@ -12,12 +12,9 @@ async function calcularPagos(clientes, fechaEsperada) {
         WHERE idCredito = ?
         ORDER BY fechaEsperada
       `;
-
       db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
         if (err) return rej(err);
-
         const { atraso, adelanto, falla } = calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
-
         res({
           ...cliente,
           atraso,
@@ -38,7 +35,6 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
   let falla = 0;
 
   pagos.sort((a, b) => new Date(a.fechaEsperada) - new Date(b.fechaEsperada));
-
   pagos.forEach(pago => {
     const cantidad = Number(pago.cantidad ?? 0);
     const pagado = Number(pago.cantidadPagada ?? 0);
@@ -93,10 +89,6 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
     falla
   };
 }
-
-
-
-
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
