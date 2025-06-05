@@ -24,4 +24,25 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.post('/', async (req, res) => {
+  console.log('Datos recibidos del formulario:');
+  console.log(req.body);
+
+  try {
+    const pagos = await paymentsController.registrarPagos(req.body);
+
+    if (!pagos || pagos.length === 0) {
+      return res.status(404).json({ message: 'Datos no válidos' });
+    }
+
+    res.status(200).json({ message: 'Pagos registrados correctamente' });
+  } catch (error) {
+    console.error('Error al registrar pagos:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+});
+
+
 module.exports = router;
+
+

@@ -150,8 +150,55 @@ const getClientsFromZone = (idZona) => {
   });
 };
 
+
+const registrarPagos = async (pagos) => {
+  for (const pago of pagos) {
+    const { idCredito, payment } = pago;
+    let monto = Number(payment) || 0;
+
+    if (monto <= 0) continue;
+
+    // Ejecuta la consulta y guarda el resultado sin destructurar
+    const resultado = await db.query(
+      'SELECT * FROM pagos WHERE idCredito = ? ORDER BY numeroSemana ASC',
+      [idCredito]
+    );
+
+    console.log('Resultado de db.query:', resultado);
+
+    // Intentamos asignar semanas según lo que recibamos
+    let semanas;
+
+    if (Array.isArray(resultado)) {
+      // mysql2 suele devolver [rows, fields]
+      if (Array.isArray(resultado[0])) {
+        semanas = resultado[0]; // filas en la primera posición
+      } else {
+        semanas = resultado; // resultado directo como filas
+      }
+    } else {
+      semanas = []; // fallback por si no es iterable
+    }
+
+    console.log('Semanas extraídas:', semanas);
+
+    // Ahora el resto de tu lógica usa "semanas" que debe ser un array
+    for (let semana of semanas) {
+      // aquí tu lógica para actualizar los pagos...
+    }
+  }
+
+  return { success: true };
+};
+
+
+
+
+
+
 module.exports = {
   getClientsFromZone,
   calcularPagos, 
-  calcularEstadoDePagosOrdenado
+  calcularEstadoDePagosOrdenado, 
+  registrarPagos
 };
