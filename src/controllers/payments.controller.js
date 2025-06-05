@@ -1,53 +1,64 @@
 const db = require('../db');
-const getClientesPorCodigoZona = async (req, res) => {
-  const { codigoZona } = req.params;
-  try {
-    // Buscar el idZona asociado al código de zona
-    const zonaResult = await new Promise((resolve, reject) => {
-      db.query(
-        'SELECT idZona FROM zonas WHERE codigoZona = ?',
-        [codigoZona],
-        (err, results) => {
-          if (err) reject(err);
-          else resolve(results);
-        }
-      );
+
+const TABLE_ZONES = 'zonas';
+const TABLE_CLIENTES = 'clientes'
+const TABLE_CREDITOS = 'creditos';
+
+const getClientsFromZone = (idZona) => {
+  console.log('ID en el controller:', idZona);
+
+  const getLastSaturday = () => {
+    const today = new Date();
+    const day = today.getDay(); // 0 = domingo, 6 = sábado
+    const diff = day === 6 ? 0 : day + 1;
+    const lastSaturday = new Date(today);
+    lastSaturday.setDate(today.getDate() - diff);
+    return lastSaturday.toISOString().split('T')[0]; // formato YYYY-MM-DD
+  };
+
+  const fechaEsperada = getLastSaturday();
+
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT 
+        CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
+        c.clasificacion,
+        cr.fechaEntrega,
+        cr.fechaVencimiento,
+        cr.abonoSemanal AS montoSemanal,
+        cr.cumplimiento,
+        (
+          SELECT COUNT(*) 
+          FROM creditos 
+          WHERE creditos.idCliente = c.idCliente
+            AND creditos.estado IN ('Activo', 'Pagado', 'Adicional', 'Vencido')
+        ) AS numeroCreditos,
+        p.numeroSemana
+      FROM clientes AS c
+      JOIN creditos AS cr ON c.idCliente = cr.idCliente
+      LEFT JOIN pagos AS p 
+        ON cr.idCredito = p.idCredito
+        AND p.fechaEsperada = ?
+      WHERE c.idZona = ?
+        AND cr.estado = 'Activo'
+    `;
+
+    db.query(query, [fechaEsperada, idZona], (error, results) => {
+      if (error) {
+        return reject(error);
+      }
+
+      if (results.length === 0) {
+        return resolve(null);
+      }
+
+      resolve(results);
     });
-    if (zonaResult.length === 0) {
-      return res.status(404).json({ message: 'Zona no encontrada.' });
-    }
-    const idZona = zonaResult[0].idZona;
-    console.log('ID de Zona encontrada:', idZona);  // Depuración
-    // Obtener los clientes junto con los datos de creditos y pagos
-    const clientes = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT c.nombre, c.apellidoPaterno, c.apellidoMaterno, c.clasificacion, c.tipoCliente, 
-                cr.monto, cr.fechaEntrega, cr.fechaVencimiento, 
-                MAX(p.numeroSemana) AS numeroSemana, MAX(p.cantidad) AS cantidad  -- Utilizando MAX para obtener un solo valor
-         FROM clientes c
-         JOIN creditos cr ON c.idCliente = cr.idCliente
-         LEFT JOIN pagos p ON c.idCliente = p.idCliente  -- Relacionamos pagos con clientes
-         WHERE c.idZona = ? 
-         AND cr.estado IN ('activo', 'vencido', 'Adicional')  -- Agregamos 'Adicional' a los estados válidos
-         GROUP BY c.idCliente, c.nombre, c.apellidoPaterno, c.apellidoMaterno, c.clasificacion, c.tipoCliente, cr.monto, cr.fechaEntrega, cr.fechaVencimiento`,
-        [idZona], 
-        (err, results) => {
-          if (err) reject(err);
-          else resolve(results);
-        }
-      );
-    });
-    console.log('Clientes encontrados:', clientes);  // Depuración
-    if (clientes.length === 0) {
-      return res.status(404).json({ message: 'No hay clientes en esa zona.' });
-    }
-    res.json(clientes);
-  } catch (error) {
-    console.error('Error al obtener clientes por código de zona:', error);
-    res.status(500).json({ message: 'Error interno del servidor.' });
-  }
+  });
 };
+
+
 module.exports = {
-  getClientesPorCodigoZona,
+  getClientsFromZone
 };
 
