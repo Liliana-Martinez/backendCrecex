@@ -1,7 +1,4 @@
 const db = require('../db');
-const TABLE_ZONES = 'zonas';
-const TABLE_CLIENTES = 'clientes';
-const TABLE_CREDITOS = 'creditos';
 
 async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
@@ -149,50 +146,111 @@ const getClientsFromZone = (idZona) => {
     });
   });
 };
-
-
 const registrarPagos = async (pagos) => {
-  for (const pago of pagos) {
-    const { idCredito, payment } = pago;
-    let monto = Number(payment) || 0;
+  try {
+    for (const pago of pagos) {
+      const { idCredito, payment } = pago;
+      let monto = Number(payment);
 
-    if (monto <= 0) continue;
+      if (!idCredito || isNaN(monto) || monto <= 0) continue;
 
-    // Ejecuta la consulta y guarda el resultado sin destructurar
-    const resultado = await db.query(
-      'SELECT * FROM pagos WHERE idCredito = ? ORDER BY numeroSemana ASC',
-      [idCredito]
-    );
+      // Obtener semanas del crédito
+      const resultado = await new Promise((resolve, reject) => {
+        db.query(
+          'SELECT * FROM pagos WHERE idCredito = ? ORDER BY numeroSemana ASC',
+          [idCredito],
+          (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          }
+        );
+      });
 
-    console.log('Resultado de db.query:', resultado);
+      const semanas = resultado;
+      if (!Array.isArray(semanas) || semanas.length === 0) continue;
 
-    // Intentamos asignar semanas según lo que recibamos
-    let semanas;
+      const hoy = new Date();
+      const hoySábado = new Date(hoy);
+      hoySábado.setDate(hoy.getDate() - hoy.getDay() + 6); // siguiente sábado
 
-    if (Array.isArray(resultado)) {
-      // mysql2 suele devolver [rows, fields]
-      if (Array.isArray(resultado[0])) {
-        semanas = resultado[0]; // filas en la primera posición
-      } else {
-        semanas = resultado; // resultado directo como filas
+      for (const semana of semanas) {
+        if (monto <= 0) break;
+
+        const { idPago, cantidad, cantidadPagada, estado, fechaEsperada } = semana;
+        const cantidadEsperada = Number(cantidad);
+        const pagado = Number(cantidadPagada) || 0;
+        const restante = cantidadEsperada - pagado;
+
+        const fechaSemana = new Date(fechaEsperada);
+        const esSemanaActualOPasada = fechaSemana <= hoySábado;
+
+        // 1. Prioridad: Incompleto
+        if (estado === 'incompleto' && restante > 0) {
+          if (monto >= restante) {
+            await actualizarPago(idPago, cantidadEsperada, 'pagadoAtrasado');
+            monto -= restante;
+          } else {
+            await actualizarPago(idPago, pagado + monto, 'incompleto');
+            monto = 0;
+          }
+          continue;
+        }
+
+        // 2. Semanas en estado adelanto parcial
+        if (estado === 'adelanto' && restante > 0) {
+          if (monto >= restante) {
+            const nuevoPagado = pagado + restante;
+            const nuevoEstado = esSemanaActualOPasada ? 'pagado' : 'adelanto';
+            await actualizarPago(idPago, nuevoPagado, nuevoEstado);
+            monto -= restante;
+          } else {
+            await actualizarPago(idPago, pagado + monto, 'adelanto');
+            monto = 0;
+          }
+          continue;
+        }
+
+        // 3. Semanas pendientes actuales
+        if (estado === 'pendiente') {
+          if (monto >= cantidadEsperada) {
+            const nuevoEstado = esSemanaActualOPasada ? 'pagado' : 'adelanto';
+            await actualizarPago(idPago, cantidadEsperada, nuevoEstado);
+            monto -= cantidadEsperada;
+          } else {
+            const nuevoEstado = esSemanaActualOPasada ? 'incompleto' : 'adelanto';
+            await actualizarPago(idPago, monto, nuevoEstado);
+            monto = 0;
+          }
+          continue;
+        }
+
+        // 4. Si ya está pagado o pagadoAtrasado, ignoramos
+        if (estado === 'pagado' || estado === 'pagadoAtrasado') {
+          continue;
+        }
       }
-    } else {
-      semanas = []; // fallback por si no es iterable
     }
 
-    console.log('Semanas extraídas:', semanas);
-
-    // Ahora el resto de tu lógica usa "semanas" que debe ser un array
-    for (let semana of semanas) {
-      // aquí tu lógica para actualizar los pagos...
-    }
+    return { success: true, message: 'Pagos registrados correctamente' };
+  } catch (error) {
+    console.error('Error al registrar pagos:', error);
+    return { success: false, message: 'Error al registrar pagos', error };
   }
-
-  return { success: true };
 };
 
-
-
+// Función auxiliar
+const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
+  return new Promise((resolve, reject) => {
+    db.query(
+      'UPDATE pagos SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = ? WHERE idPago = ?',
+      [cantidadPagada, nuevoEstado, idPago],
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      }
+    );
+  });
+};
 
 
 
@@ -200,5 +258,6 @@ module.exports = {
   getClientsFromZone,
   calcularPagos, 
   calcularEstadoDePagosOrdenado, 
-  registrarPagos
+  registrarPagos, 
+  actualizarPago
 };
