@@ -5,6 +5,16 @@ const TABLE_GRNT_CNTS = 'garantias_cliente'; //GRNT=GARANTIAS CNTS=CLIENTES
 const TABLE_AVALES = 'avales';
 const TABLE_GRNT_AVAL = 'garantias_aval';
 
+// "Helper"
+function queryAsync(sql, params = []) {
+return new Promise((resolve, reject) => {
+        db.query(sql, params, (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+        });
+    });
+}
+
 //insertar los datos personales del cliente
 const insert = (clientData) => {
     return new Promise((resolve, reject) => {
@@ -104,10 +114,32 @@ const insertAvalGarantias = (avalId, garantias) => {
         });
     });
 };
+
+async function updateClient(idCliente, dataToUpdate) {
+    console.log('Id del cliente a modificar: ', idCliente);
+    console.log('Datos a modificar: ', dataToUpdate);
+
+    if (!idCliente || Object.keys(dataToUpdate).length === 0) {
+        throw new Error('Faltaan datos para actualizar.');
+    }
+
+    const campos = Object.keys(dataToUpdate).filter(key => key != 'idCliente');
+    const valores = campos.map(key => dataToUpdate[key]);
+    const setClause = campos.map(key => `${key} = ?`).join(', ');
+    const queryToUpdate = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
+
+    valores.push(idCliente);
+    const [result] = await queryAsync(queryToUpdate, valores);
+
+    return result;
+}
+
+
 module.exports = {
     insert,
     insertClientGuarantees,
     insertGuarantor,
     insertAvalGarantias,
+    updateClient
 }
 

@@ -310,6 +310,7 @@ async function searchModify(nombreCompleto) {
         console.log('Id del cliente dentro de searchModify: ', idCliente);
 
         return {
+            idCliente,
             clientData
         }
     } catch(error) {

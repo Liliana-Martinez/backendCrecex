@@ -59,4 +59,19 @@ router.post('/add/guarantor', async (req, res) => {
     }
 });
 
+router.put('/modify/client', async (req, res) => {
+    const idCliente = req.body.id;
+    const dataToUpdate = req.body;
+    delete dataToUpdate.id;
+
+    try {
+        const resultado = await clientGuarantor.updateClient(idCliente, dataToUpdate);
+        console.log('Resultado de actualizazion: ', resultado);
+        return res.json({ message: 'Datos actualizados correctamente', data: resultado})
+    } catch(error) {
+        console.error('Error al modificar datos del cliente', error);
+        return res.status(500).json({ error: 'Error al modificar datos del cliente'})
+    }
+});
+
 module.exports = router;
