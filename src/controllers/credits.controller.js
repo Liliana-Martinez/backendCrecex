@@ -132,11 +132,19 @@ const createNewCredit = (req, res) => {
                                 console.error('Error al registrar pagos:', err3);
                                 return res.status(500).json({ error: 'Error al guardar los pagos' });
                             }
-
-                            return res.status(201).json({
+                          respuestaImprimir(idCredito)
+                            .then((respuesta) => {
+                                return res.status(201).json({
                                 abonoSemanal,
-                                efectivo
+                                efectivo,
+                                imprimir:respuesta
+                                });
+                            })
+                            .catch((error) => {
+                                console.error('Error al construir respuesta para imprimir:', error);
+                                return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
                             });
+
                         });
                     }
                 );
@@ -465,9 +473,66 @@ const createAdditionalCredit = (req, res) => {
     });
 };
 
+async function respuestaImprimir(idCredito) {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT 
+        c.tipoCredito, c.idCredito, c.monto, c.fechaEntrega, c.abonoSemanal, c.semanas AS numeroSemana,
+        c.horarioEntrega, c.recargos, c.atrasos, c.efectivo,
+        cl.idCliente, cl.nombre, cl.apellidoPaterno, cl.apellidoMaterno,
+        z.idZona, z.promotora, z.codigoZona,
+        p.fechaEsperada
+      FROM creditos c
+      JOIN clientes cl ON cl.idCliente = c.idCliente
+      JOIN zonas z ON cl.idZona = z.idZona
+      LEFT JOIN pagos p ON p.idCredito = c.idCredito
+      WHERE c.idCredito = ?
+      ORDER BY p.numeroSemana ASC
+      LIMIT 1
+    `;
+
+    db.query(query, [idCredito], (err, results) => {
+      if (err) return reject(err);
+      if (results.length === 0) return resolve(null);
+
+      const r = results[0];
+
+      resolve({
+        tipoCredito: r.tipoCredito,
+        clientes: {
+          id: r.idCliente,
+          nombre: r.nombre,
+          apellidoPaterno: r.apellidoPaterno,
+          apellidoMaterno: r.apellidoMaterno
+        },
+        creditos: {
+          id: r.idCredito,
+          monto: r.monto,
+          fechaEntrega: r.fechaEntrega,
+          abonoSemanal: r.abonoSemanal,
+          semanas: r.numeroSemana,
+          horarioEntrega: r.horarioEntrega,
+          recargos: r.recargos,
+          atrasos: r.atrasos,
+          efectivo: r.efectivo
+        },
+        pagos: {
+          fechaEsperada: r.fechaEsperada
+        },
+        zona: {
+          idZona: r.idZona,
+          promotora: r.promotora,
+          codigoZona: r.codigoZona
+        }
+      });
+    });
+  });
+}
+
 
 module.exports = {
     createNewCredit,
     createRenewCredit,
-    createAdditionalCredit
+    createAdditionalCredit, 
+    respuestaImprimir
 };

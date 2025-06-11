@@ -184,47 +184,56 @@ const registrarPagos = async (pagos) => {
         const fechaSemana = new Date(fechaEsperada);
         const esSemanaActualOPasada = fechaSemana <= hoySábado;
 
-        // 1. Prioridad: Incompleto
-        if (estado === 'incompleto' && restante > 0) {
+        // 1. Si hay una semana con estado 'incompleto', completarla primero
+        if (estado === 'adelantado' && restante > 0) {
           if (monto >= restante) {
-            await actualizarPago(idPago, cantidadEsperada, 'pagadoAtrasado');
+            await actualizarPago(idPago, cantidadEsperada, 'adelantado');
             monto -= restante;
           } else {
-            await actualizarPago(idPago, pagado + monto, 'incompleto');
+            await actualizarPago(idPago, pagado + monto, 'adelantado');
             monto = 0;
           }
           continue;
         }
 
-        // 2. Semanas en estado adelanto parcial
+        // 2. Si hay una semana en 'adelanto' y aún no se completa, seguir sumando ahí
         if (estado === 'adelanto' && restante > 0) {
           if (monto >= restante) {
-            const nuevoPagado = pagado + restante;
-            const nuevoEstado = esSemanaActualOPasada ? 'pagado' : 'adelanto';
-            await actualizarPago(idPago, nuevoPagado, nuevoEstado);
+            // COMPLETA el adelanto, pero NO cambia el estado aún, eso se hace con otra lógica
+            await actualizarPago(idPago, cantidadEsperada, 'adelanto');
             monto -= restante;
           } else {
             await actualizarPago(idPago, pagado + monto, 'adelanto');
             monto = 0;
           }
+
+          // 👇 ¡Importante! No avanzar hasta que se complete esta semana
+          if (pagado + monto < cantidadEsperada) break;
+
           continue;
         }
 
-        // 3. Semanas pendientes actuales
+        // 3. Semana pendiente actual
         if (estado === 'pendiente') {
           if (monto >= cantidadEsperada) {
-            const nuevoEstado = esSemanaActualOPasada ? 'pagado' : 'adelanto';
-            await actualizarPago(idPago, cantidadEsperada, nuevoEstado);
+            await actualizarPago(
+              idPago,
+              cantidadEsperada,
+              esSemanaActualOPasada ? 'pagado' : 'adelanto'
+            );
             monto -= cantidadEsperada;
           } else {
-            const nuevoEstado = esSemanaActualOPasada ? 'incompleto' : 'adelanto';
-            await actualizarPago(idPago, monto, nuevoEstado);
+            await actualizarPago(
+              idPago,
+              monto,
+              esSemanaActualOPasada ? 'adelanto' : 'incompleto'
+            );
             monto = 0;
           }
           continue;
         }
 
-        // 4. Si ya está pagado o pagadoAtrasado, ignoramos
+        // 4. Si ya está pagado o pagadoAtrasado, saltar
         if (estado === 'pagado' || estado === 'pagadoAtrasado') {
           continue;
         }
@@ -238,7 +247,7 @@ const registrarPagos = async (pagos) => {
   }
 };
 
-// Función auxiliar
+
 const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
   return new Promise((resolve, reject) => {
     db.query(
@@ -254,10 +263,55 @@ const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
 
 
 
+const actualizarAdelantos = async () => {
+  try {
+    const hoy = new Date();
+    const hoySábado = new Date(hoy);
+    hoySábado.setDate(hoy.getDate() - hoy.getDay() + 6); 
+    hoySábado.setHours(0, 0, 0, 0);
+
+    const resultados = await new Promise((resolve, reject) => {
+      db.query(
+        "SELECT * FROM pagos WHERE estado = 'adelanto' AND fechaEsperada <= ?",
+        [hoySábado],
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    for (const pago of resultados) {
+      const { idPago, cantidad, cantidadPagada } = pago;
+      const cantidadEsperada = Number(cantidad);
+      const pagado = Number(cantidadPagada) || 0;
+
+      const nuevoEstado = pagado >= cantidadEsperada ? 'pagado' : 'incompleto';
+
+      await new Promise((resolve, reject) => {
+        db.query(
+          'UPDATE pagos SET estado = ?, fechaPagada = CURDATE() WHERE idPago = ?',
+          [nuevoEstado, idPago],
+          (err, result) => {
+            if (err) return reject(err);
+            resolve(result);
+          }
+        );
+      });
+    }
+
+    console.log('Adelantos actualizados automáticamente');
+  } catch (error) {
+    console.error('Error al actualizar adelantos:', error);
+  }
+};
+
+
 module.exports = {
   getClientsFromZone,
   calcularPagos, 
   calcularEstadoDePagosOrdenado, 
   registrarPagos, 
-  actualizarPago
+  actualizarPago, 
+  actualizarAdelantos
 };
