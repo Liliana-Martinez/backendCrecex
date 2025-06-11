@@ -24,7 +24,7 @@ router.post('/cliente', async (req, res) => {
                     const resultado = await searchController.searchConsult(nombreCompleto);
                     res.json(resultado);
                 } catch(error) {
-                    console.error('Error al consultar el cliente: ', error);
+                    console.error(error);
                     res.status(404).json({ error: 'Error en la busqueda del cliente' });
                 }
                 break;

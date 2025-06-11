@@ -189,7 +189,7 @@ async function searchConsult(nombreCompleto) {
         const queryToFindClient = `SELECT CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) AS nombreCompleto, idCliente FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
         const clientResult = await queryAsync(queryToFindClient, [formattedName]);
-
+        
         if (clientResult.length === 0) {
             throw new Error('Cliente no encontrado.');
         }
@@ -197,37 +197,43 @@ async function searchConsult(nombreCompleto) {
         const client = clientResult[0];
         const idCliente = client.idCliente;
 
-        console.log('ID del cliente encontrado: ', idCliente);
-        //Obtener cuantos creditos ha tenido/tiene el cliente
+        //Obtener el total del creditos del cliente
         const queryToGetTotalCredits = `SELECT COUNT(*) AS totalCredits FROM ${TABLE_CREDITOS} WHERE idCliente = ?`;
         const totalCreditsResult = await queryAsync(queryToGetTotalCredits, [idCliente]);
         const totalCredits = totalCreditsResult[0].totalCredits;
         console.log('Total de creditos del cliente: ', totalCredits);
+        
+        //Obtener la semana actual en pagos del crédito
+        const queryToGetCurrentWeek = `SELECT COUNT(*) AS currentWeek FROM ${TABLE_PAGOS} p INNER JOIN ${TABLE_CREDITOS} c ON p.idCredito = c.idCredito WHERE c.idCliente = ? AND c.estado = 'activo' AND p.estado = 'pagado'`;
 
-        //Consultar el resto de datos del credito actual
+        const currentWeekResult = await queryAsync(queryToGetCurrentWeek, [idCliente]);
+        const currentWeek = currentWeekResult[0].currentWeek;
+        console.log('Current week del cliente: ', currentWeek);
+
+
+        //Consultar el resto de los datos del credito actual
         const currentCreditQuery = `SELECT
                                         c.monto,
                                         c.semanas,
                                         c.fechaEntrega,
                                         c.abonoSemanal,
-                                        c.cumplimiento,
-                                        p.numeroSemana
+                                        c.cumplimiento
                                     FROM ${TABLE_CREDITOS} c
-                                    LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
                                     WHERE idCliente = ? AND c.estado = 'activo'`;
         const currentCredit = await queryAsync(currentCreditQuery, [idCliente]);
-        console.log('Credito actual: ', currentCredit);
+        console.log('Datos del credito actual: ', currentCredit);
 
-        //Obtener el historial crediticio del cliente
-        const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
-        const creditHistory = await queryAsync(historyCreditQuery, [idCliente]);
-        
+        //Obtener historial crediticio del cliente
+        const creditHistoryQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
+        const creditHistory = await queryAsync(creditHistoryQuery, [idCliente]);
         return {
             client,
-            totalCredits, //Cantidad de creditos que tiene el cliente
+            totalCredits,
+            currentWeek,
             currentCredit,
             creditHistory
         }
+        
     } catch(error) {
         console.log('Error al buscar el cliente: ', error);
         throw error;
