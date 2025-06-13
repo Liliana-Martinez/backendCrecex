@@ -22,6 +22,8 @@ const createNewCredit = (req, res) => {
         const fechaVencimientoF = fechaVencimiento.toISOString().split('T')[0];
 
         const montoNum = parseFloat(monto);
+        const recargosNum = parseFloat(recargos ?? 0);
+        const atrasosNum = parseFloat(atrasos ?? 0);
 
         const buscarClienteQuery = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
 
@@ -35,7 +37,6 @@ const createNewCredit = (req, res) => {
                 return res.status(404).json({ error: 'El cliente no existe' });
             }
 
-            // Verificar si el cliente ya tiene un crédito activo
             const verificarCreditoExistenteQuery = `SELECT COUNT(*) AS total FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'Activo'`;
 
             db.query(verificarCreditoExistenteQuery, [idCliente], (errVerif, resultVerif) => {
@@ -45,10 +46,9 @@ const createNewCredit = (req, res) => {
                 }
 
                 if (resultVerif[0].total > 0) {
-                    return res.status(400).json({ error: true, message: 'Este cliente ya ha tenido creditos' });
+                    return res.status(400).json({ error: true, message: 'Este cliente ya ha tenido créditos' });
                 }
 
-                // Cálculo del abono
                 let factor;
                 if (semanasInt === 12) {
                     factor = 1.5;
@@ -60,7 +60,6 @@ const createNewCredit = (req, res) => {
 
                 const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-                // Validaciones de monto mínimo
                 if (semanasInt === 12 && montoNum < 1000) {
                     return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
                 }
@@ -68,7 +67,6 @@ const createNewCredit = (req, res) => {
                     return res.status(400).json({ error: true, message: 'El monto mínimo para 16 semanas es de $4000' });
                 }
 
-                // Validación según clasificación
                 let validacionCorrecta = false;
                 switch (clasificacion) {
                     case 'D':
@@ -81,7 +79,7 @@ const createNewCredit = (req, res) => {
                         if ((semanasInt === 12 && montoNum <= 6000) || (semanasInt === 16 && montoNum <= 7500)) validacionCorrecta = true;
                         break;
                     case 'A':
-                        if ((semanasInt === 12 || semanasInt === 16) && montoNum >0) validacionCorrecta = true;
+                        if ((semanasInt === 12 || semanasInt === 16) && montoNum > 0) validacionCorrecta = true;
                         break;
                     default:
                         return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
@@ -93,20 +91,17 @@ const createNewCredit = (req, res) => {
 
                 const totalAPagar = montoNum * factor;
                 const abonoSemanal = Math.round(totalAPagar / semanasInt);
-
-                const recargosNum = parseFloat(recargos ?? 0);
-                const atrasosNum = parseFloat(atrasos ?? 0);
                 const efectivo = montoNum - recargosNum - atrasosNum;
 
                 const query = `
                     INSERT INTO ${TABLE_CREDITOS} 
-                    (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
-                    VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'nuevo', ?)
+                    (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, atrasos, abonoSemanal, estado, tipoCredito, efectivo)
+                    VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, 'Activo', 'nuevo', ?)
                 `;
 
                 db.query(
                     query,
-                    [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal, efectivo],
+                    [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargosNum, atrasosNum, abonoSemanal, efectivo],
                     (err, result) => {
                         if (err) {
                             console.error('Error al registrar crédito:', err);
@@ -132,19 +127,19 @@ const createNewCredit = (req, res) => {
                                 console.error('Error al registrar pagos:', err3);
                                 return res.status(500).json({ error: 'Error al guardar los pagos' });
                             }
-                          respuestaImprimir(idCredito)
-                            .then((respuesta) => {
-                                return res.status(201).json({
-                                abonoSemanal,
-                                efectivo,
-                                imprimir:respuesta
-                                });
-                            })
-                            .catch((error) => {
-                                console.error('Error al construir respuesta para imprimir:', error);
-                                return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
-                            });
 
+                            respuestaImprimir(idCredito)
+                                .then((respuesta) => {
+                                    return res.status(201).json({
+                                        abonoSemanal,
+                                        efectivo,
+                                        imprimir: respuesta
+                                    });
+                                })
+                                .catch((error) => {
+                                    console.error('Error al construir respuesta para imprimir:', error);
+                                    return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
+                                });
                         });
                     }
                 );
@@ -152,6 +147,7 @@ const createNewCredit = (req, res) => {
         });
     }
 };
+
 const createRenewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, atrasos } = req.body;
 
@@ -180,7 +176,6 @@ const createRenewCredit = (req, res) => {
     const factor = semanasInt === 12 ? 1.5 : 1.583;
     const abonoSemanal = Math.round((montoNum * factor) / semanasInt);
 
-    // Buscar crédito activo con más semanas pagadas
     const queryCreditoYPagos = `
         SELECT 
             c.idCredito, c.semanas AS semanasTotales, p.estado, COUNT(p.idPago) AS semanasPagadas, c.abonoSemanal
@@ -204,7 +199,6 @@ const createRenewCredit = (req, res) => {
         const abonoAnterior = creditoActual.abonoSemanal;
         const semanasRestantes = semanasTotales - semanasPagadas;
 
-        // Validar si puede renovar según el crédito actual
         const semanasMinimas = semanasInt === 12 ? 10 : 14;
         if (semanasPagadas < semanasMinimas) {
             return res.status(400).json({
@@ -213,10 +207,8 @@ const createRenewCredit = (req, res) => {
             });
         }
 
-        // Calcular descuento de semanas restantes si no ha terminado
         const descuentoSemanasRestantes = semanasRestantes > 0 ? semanasRestantes * abonoAnterior : 0;
 
-        // Obtener clasificación del cliente
         const queryClasificacion = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
         db.query(queryClasificacion, [idCliente], (errClas, resultClas) => {
             if (errClas || resultClas.length === 0) {
@@ -226,7 +218,6 @@ const createRenewCredit = (req, res) => {
 
             const clasificacion = resultClas[0].clasificacion.toUpperCase();
 
-            // Validaciones por clasificación
             if (semanasInt === 12 && montoNum < 1000) {
                 return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es $1000' });
             }
@@ -246,7 +237,7 @@ const createRenewCredit = (req, res) => {
                     if ((semanasInt === 12 && montoNum <= 6000) || (semanasInt === 16 && montoNum <= 7500)) valido = true;
                     break;
                 case 'A':
-                    if (montoNum >0) valido = true;
+                    if (montoNum > 0) valido = true;
                     break;
                 default:
                     return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
@@ -256,17 +247,15 @@ const createRenewCredit = (req, res) => {
                 return res.status(400).json({ error: true, message: 'El monto no cumple con la clasificación del cliente' });
             }
 
-            // Cálculo de efectivo
             const efectivo = montoNum - recargosNum - atrasosNum - descuentoSemanasRestantes;
 
-            // Insertar nuevo crédito
             const insertCredito = `
                 INSERT INTO creditos
-                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
-                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'renovación', ?)
+                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, atrasos, abonoSemanal, estado, tipoCredito, efectivo)
+                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, 'Activo', 'renovación', ?)
             `;
 
-            db.query(insertCredito, [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargosNum, abonoSemanal, efectivo], (err2, result2) => {
+            db.query(insertCredito, [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargosNum, atrasosNum, abonoSemanal, efectivo], (err2, result2) => {
                 if (err2) {
                     console.error('Error al registrar nuevo crédito:', err2);
                     return res.status(500).json({ error: true, message: 'Error al guardar el crédito de renovación' });
@@ -274,7 +263,6 @@ const createRenewCredit = (req, res) => {
 
                 const idCredito = result2.insertId;
 
-                // Generar pagos esperados del nuevo crédito
                 const pagosQuery = `INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado) VALUES `;
                 let pagosValues = [];
 
@@ -291,7 +279,6 @@ const createRenewCredit = (req, res) => {
                         return res.status(500).json({ error: true, message: 'Error al guardar los pagos del nuevo crédito' });
                     }
 
-                    // Marcar semanas faltantes del crédito anterior como pagadas
                     const updatePagosAnteriores = `
                         UPDATE pagos
                         SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = 'Pagado'
@@ -306,7 +293,6 @@ const createRenewCredit = (req, res) => {
                             return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudieron marcar como pagadas las semanas anteriores' });
                         }
 
-                        // Cambiar estado del crédito anterior a 'Pagado'
                         const updateCreditoAnterior = `UPDATE creditos SET estado = 'Pagado' WHERE idCredito = ?`;
                         db.query(updateCreditoAnterior, [creditoActual.idCredito], (err5) => {
                             if (err5) {
@@ -326,6 +312,7 @@ const createRenewCredit = (req, res) => {
         });
     });
 };
+
 const createAdditionalCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
 
@@ -428,8 +415,8 @@ const createAdditionalCredit = (req, res) => {
 
             const query = `
                 INSERT INTO ${TABLE_CREDITOS} 
-                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, abonoSemanal, estado, tipoCredito, efectivo)
-                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, 'Activo', 'adicional', ?)
+                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, atrsos, abonoSemanal, estado, tipoCredito, efectivo)
+                VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, 'Activo', 'adicional', ?)
             `;
 
             db.query(
