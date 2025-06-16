@@ -2,6 +2,7 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
+const TABLE_AVALES = 'avales'
 
 // "Helper"
 function queryAsync(sql, params = []) {
@@ -195,7 +196,7 @@ async function searchConsult(nombreCompleto) {
         const queryToFindClient = `SELECT CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) AS nombreCompleto, idCliente FROM ${TABLE_CLIENTES} WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ? LIMIT 1`;
 
         const clientResult = await queryAsync(queryToFindClient, [formattedName]);
-
+        
         if (clientResult.length === 0) {
             throw new Error('Cliente no encontrado.');
         }
@@ -203,48 +204,54 @@ async function searchConsult(nombreCompleto) {
         const client = clientResult[0];
         const idCliente = client.idCliente;
 
-        console.log('ID del cliente encontrado: ', idCliente);
-        //Obtener cuantos creditos ha tenido/tiene el cliente
+        //Obtener el total del creditos del cliente
         const queryToGetTotalCredits = `SELECT COUNT(*) AS totalCredits FROM ${TABLE_CREDITOS} WHERE idCliente = ?`;
         const totalCreditsResult = await queryAsync(queryToGetTotalCredits, [idCliente]);
         const totalCredits = totalCreditsResult[0].totalCredits;
         console.log('Total de creditos del cliente: ', totalCredits);
+        
+        //Obtener la semana actual en pagos del crédito
+        const queryToGetCurrentWeek = `SELECT COUNT(*) AS currentWeek FROM ${TABLE_PAGOS} p INNER JOIN ${TABLE_CREDITOS} c ON p.idCredito = c.idCredito WHERE c.idCliente = ? AND c.estado = 'activo' AND p.estado = 'pagado'`;
 
-        //Consultar el resto de datos del credito actual
+        const currentWeekResult = await queryAsync(queryToGetCurrentWeek, [idCliente]);
+        const currentWeek = currentWeekResult[0].currentWeek;
+        console.log('Current week del cliente: ', currentWeek);
+
+
+        //Consultar el resto de los datos del credito actual
         const currentCreditQuery = `SELECT
                                         c.monto,
                                         c.semanas,
                                         c.fechaEntrega,
                                         c.abonoSemanal,
-                                        c.cumplimiento,
-                                        p.numeroSemana
+                                        c.cumplimiento
                                     FROM ${TABLE_CREDITOS} c
-                                    LEFT JOIN ${TABLE_PAGOS} p ON c.idCredito = p.idCredito
                                     WHERE idCliente = ? AND c.estado = 'activo'`;
         const currentCredit = await queryAsync(currentCreditQuery, [idCliente]);
-        console.log('Credito actual: ', currentCredit);
+        console.log('Datos del credito actual: ', currentCredit);
 
-        //Obtener el historial crediticio del cliente
-        const historyCreditQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
-        const creditHistory = await queryAsync(historyCreditQuery, [idCliente]);
-        
+        //Obtener historial crediticio del cliente
+        const creditHistoryQuery = `SELECT monto, fechaEntrega, semanas, cumplimiento FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado != 'activo'`;
+        const creditHistory = await queryAsync(creditHistoryQuery, [idCliente]);
         return {
             client,
-            totalCredits, //Cantidad de creditos que tiene el cliente
+            totalCredits,
+            currentWeek,
             currentCredit,
             creditHistory
         }
+        
     } catch(error) {
         console.log('Error al buscar el cliente: ', error);
         throw error;
     }
 }
 
-async function searchModify(nombreCompleto) {
+async function searchModifyClient(nombreCompleto) {
     try {
         const formattedName = `%${nombreCompleto.trim()}%`;
 
-        //Buscar el cliente por nombre
+        //Buscar datos del cliente por nombre
         const queryForClientData = `SELECT
                                         c.idCliente,
                                         c.nombre,
@@ -318,9 +325,63 @@ async function searchModify(nombreCompleto) {
     }
 }
 
+async function searchModifyGuarantor(nombreCompleto) {
+    try {
+        const formattedName = `%${nombreCompleto.trim()}%`;
+
+        //Buscar el id del nombre del cliente que llegó
+        const queryIdClient = `
+            SELECT idCliente 
+            FROM ${TABLE_CLIENTES} 
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+            LIMIT 1`
+        ;
+        const idClient = await queryAsync(queryIdClient, [formattedName]);
+        if (idClient === 0) {
+            return res.status(404).json({ message: 'Cliente no encontrado' });
+        }
+
+        console.log('Id del cliente para buscar su aval: ', idClient);
+
+        //Datos de los avales y sus garantias
+        const queryForGuarantorData = `
+            SELECT
+            a.idAval,
+            a.nombre,
+            a.apellidoPaterno,
+            a.apellidoMaterno,
+            a.edad,
+            a.domicilio,
+            a.telefono,
+            a.trabajo,
+            a.domicilioTrabajo,
+            a.telefonoTrabajo,
+            GROUP_CONCAT(g.descripcion ORDER BY g.idGarantia SEPARATOR '|') AS garantias
+            FROM ${TABLE_AVALES} a LEFT JOIN garantias_aval g ON a.idAval = g.idAval
+            WHERE a.idCliente = ?
+            GROUP BY a.idAval`;
+
+            const guarantorDataResult = await queryAsync(queryForGuarantorData, [idClient]);
+            
+            const guarantorDataRow = guarantorDataResult[0];
+            const idAval = guarantorDataResult.idAval;
+
+            console.log(guarantorDataResult);
+        
+            return {
+                idAval,
+                guarantorDataResult
+            }
+
+    } catch(error) {
+        throw error;
+    }
+}
+
 module.exports = {
     SearchCredit, 
     SearchCollectors,
     searchConsult,
-    searchModify
+    searchModifyClient,
+    searchModifyGuarantor
 };

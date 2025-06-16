@@ -120,18 +120,52 @@ async function updateClient(idCliente, dataToUpdate) {
     console.log('Datos a modificar: ', dataToUpdate);
 
     if (!idCliente || Object.keys(dataToUpdate).length === 0) {
-        throw new Error('Faltaan datos para actualizar.');
+        throw new Error('Faltan datos para actualizar.');
     }
 
-    const campos = Object.keys(dataToUpdate).filter(key => key != 'idCliente');
-    const valores = campos.map(key => dataToUpdate[key]);
-    const setClause = campos.map(key => `${key} = ?`).join(', ');
-    const queryToUpdate = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
+    // Separamos garantias del resto de los campos
+    const { garantias, ...clientFields } = dataToUpdate;
 
-    valores.push(idCliente);
-    const [result] = await queryAsync(queryToUpdate, valores);
+    // ---------------------------
+    // 1. Actualizar tabla clients
+    // ---------------------------
+    let resultCliente = null;
 
-    return result;
+    if (Object.keys(clientFields).length > 0) {
+        const campos = Object.keys(clientFields);
+        const valores = campos.map(key => clientFields[key]);
+        const setClause = campos.map(key => `${key} = ?`).join(', ');
+        const queryToUpdate = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
+
+        valores.push(idCliente);
+        resultCliente = await queryAsync(queryToUpdate, valores);
+    }
+
+    // -------------------------------------
+    // 2. Insertar garantías en nueva tabla
+    // -------------------------------------
+    let resultGarantias = [];
+
+    if (garantias && typeof garantias === 'object') {
+        // Primero, eliminamos las garantías anteriores del cliente
+        await queryAsync('DELETE FROM garantias_cliente WHERE idCliente = ?', [idCliente]);
+
+        // Insertamos las nuevas garantías
+        for (const key in garantias) {
+            const descripcion = garantias[key];
+            if (descripcion && descripcion.trim() !== '') {
+                const insertGarantiaSQL = `INSERT INTO garantias_cliente (idCliente, descripcion) VALUES (?, ?)`;
+                const insertResult = await queryAsync(insertGarantiaSQL, [idCliente, descripcion]);
+                resultGarantias.push(insertResult);
+            }
+        }
+    }
+
+    return {
+        message: 'Datos actualizados correctamente',
+        cliente: resultCliente,
+        garantias: resultGarantias
+    };
 }
 
 
