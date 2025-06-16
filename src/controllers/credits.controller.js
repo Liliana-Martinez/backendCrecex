@@ -485,7 +485,6 @@ async function respuestaImprimir(idCredito) {
       const r = results[0];
 
       resolve({
-        tipoCredito: r.tipoCredito,
         clientes: {
           id: r.idCliente,
           nombre: r.nombre,
@@ -494,6 +493,7 @@ async function respuestaImprimir(idCredito) {
         },
         creditos: {
           id: r.idCredito,
+          tipoCredito: r.tipoCredito,
           monto: r.monto,
           fechaEntrega: r.fechaEntrega,
           abonoSemanal: r.abonoSemanal,
