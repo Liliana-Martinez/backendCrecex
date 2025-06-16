@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const zoneController = require('../controllers/zones.controller');
-
+//Se manada a llamar la lista completa de las zonas
 router.get('/getAllZones', async (req, res) => {
     try {
         const zones = await zoneController.getAllZones();
@@ -12,5 +12,4 @@ router.get('/getAllZones', async (req, res) => {
         res.status(500).json({ message: 'Error al obtener las zonas' });
     }
 });
-
 module.exports = router;

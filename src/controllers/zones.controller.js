@@ -1,7 +1,6 @@
 const db = require('../db');
 
 const TABLE_ZONES = 'zonas';
-
 const getAllZones = () => {
     return new Promise((resolve, reject) => {
         const query = `SELECT idZona AS id, codigoZona FROM ${TABLE_ZONES} ORDER BY idZona`;
@@ -13,6 +12,7 @@ const getAllZones = () => {
         });
     });
 };
+
 
 module.exports = {
     getAllZones

@@ -2,6 +2,7 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
+const TABLE_AVALES = 'avales'
 
 // "Helper"
 function queryAsync(sql, params = []) {
@@ -13,7 +14,7 @@ return new Promise((resolve, reject) => {
     });
 }  
 
-const SearchCredit= (nombreCompleto) => {
+const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
         const queryCliente = `
             SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
@@ -24,8 +25,12 @@ const SearchCredit= (nombreCompleto) => {
         const formattedNombre = `%${nombreCompleto.trim()}%`;
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-            if (err) return reject('Error al buscar cliente');
-            if (clienteRows.length === 0) return resolve(null);
+            if (err) return reject({ code: 500, message: 'Error al buscar cliente' });
+
+            if (clienteRows.length === 0) {
+                return reject({ code: 404, message: 'Cliente no encontrado' });
+
+            }
 
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
@@ -38,7 +43,7 @@ const SearchCredit= (nombreCompleto) => {
             `;
 
             db.query(queryCredito, [idCliente], (err, creditoRows) => {
-                if (err) return reject('Error al buscar crédito');
+                if (err) return reject({ code: 500, message: 'Error al buscar crédito' });
 
                 const credito = creditoRows[0] || null;
 
@@ -55,7 +60,7 @@ const SearchCredit= (nombreCompleto) => {
                 `;
 
                 db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
-                    if (err) return reject('Error al buscar pagos');
+                    if (err) return reject({ code: 500, message: 'Error al buscar pagos' });
 
                     const pagos = pagosRows.length > 0 ? pagosRows : [];
 
@@ -88,7 +93,9 @@ const SearchCollectors = (nombreCompleto) => {
 
         db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
             if (err) return reject(`Error al buscar cliente: ${err.message}`);
-            if (clienteRows.length === 0) return resolve(null);
+            if (clienteRows.length === 0) {
+                return reject({ code: 404, message: 'Cliente no encontrado' });
+            }
 
             const cliente = clienteRows[0];
             const idCliente = cliente.idCliente;
@@ -240,11 +247,11 @@ async function searchConsult(nombreCompleto) {
     }
 }
 
-async function searchModify(nombreCompleto) {
+async function searchModifyClient(nombreCompleto) {
     try {
         const formattedName = `%${nombreCompleto.trim()}%`;
 
-        //Buscar el cliente por nombre
+        //Buscar datos del cliente por nombre
         const queryForClientData = `SELECT
                                         c.idCliente,
                                         c.nombre,
@@ -310,8 +317,62 @@ async function searchModify(nombreCompleto) {
         console.log('Id del cliente dentro de searchModify: ', idCliente);
 
         return {
+            idCliente,
             clientData
         }
+    } catch(error) {
+        throw error;
+    }
+}
+
+async function searchModifyGuarantor(nombreCompleto) {
+    try {
+        const formattedName = `%${nombreCompleto.trim()}%`;
+
+        //Buscar el id del nombre del cliente que llegó
+        const queryIdClient = `
+            SELECT idCliente 
+            FROM ${TABLE_CLIENTES} 
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+            LIMIT 1`
+        ;
+        const idClient = await queryAsync(queryIdClient, [formattedName]);
+        if (idClient === 0) {
+            return res.status(404).json({ message: 'Cliente no encontrado' });
+        }
+
+        console.log('Id del cliente para buscar su aval: ', idClient);
+
+        //Datos de los avales y sus garantias
+        const queryForGuarantorData = `
+            SELECT
+            a.idAval,
+            a.nombre,
+            a.apellidoPaterno,
+            a.apellidoMaterno,
+            a.edad,
+            a.domicilio,
+            a.telefono,
+            a.trabajo,
+            a.domicilioTrabajo,
+            a.telefonoTrabajo,
+            GROUP_CONCAT(g.descripcion ORDER BY g.idGarantia SEPARATOR '|') AS garantias
+            FROM ${TABLE_AVALES} a LEFT JOIN garantias_aval g ON a.idAval = g.idAval
+            WHERE a.idCliente = ?
+            GROUP BY a.idAval`;
+
+            const guarantorDataResult = await queryAsync(queryForGuarantorData, [idClient]);
+            
+            const guarantorDataRow = guarantorDataResult[0];
+            const idAval = guarantorDataResult.idAval;
+
+            console.log(guarantorDataResult);
+        
+            return {
+                idAval,
+                guarantorDataResult
+            }
+
     } catch(error) {
         throw error;
     }
@@ -321,5 +382,6 @@ module.exports = {
     SearchCredit, 
     SearchCollectors,
     searchConsult,
-    searchModify
+    searchModifyClient,
+    searchModifyGuarantor
 };
