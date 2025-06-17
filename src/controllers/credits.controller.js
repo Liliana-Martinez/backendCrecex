@@ -300,11 +300,18 @@ const createRenewCredit = (req, res) => {
                                 return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudo actualizar el estado del crédito anterior' });
                             }
 
-                            return res.status(201).json({
-                                abonoSemanal,
-                                efectivo,
-                                mensaje: 'Crédito de renovación registrado. Semanas anteriores pagadas y crédito anterior marcado como Pagado.'
-                            });
+                           respuestaImprimir(idCredito)
+                                .then((respuesta) => {
+                                    return res.status(201).json({
+                                        abonoSemanal,
+                                        efectivo,
+                                        imprimir: respuesta
+                                    });
+                                })
+                                .catch((error) => {
+                                    console.error('Error al construir respuesta para imprimir:', error);
+                                    return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
+                                });
                         });
                     });
                 });
@@ -331,6 +338,8 @@ const createAdditionalCredit = (req, res) => {
     const fechaVencimientoF = fechaVencimiento.toISOString().split('T')[0];
 
     const montoNum = parseFloat(monto);
+    const recargosNum = parseFloat(recargos ?? 0);
+    const atrasosNum = parseFloat(atrasos ?? 0);
 
     const buscarClienteQuery = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
 
@@ -346,8 +355,7 @@ const createAdditionalCredit = (req, res) => {
 
         const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-        // Verificar cuántos créditos activos tiene y sumar los montos
-        const creditosActivosQuery = `SELECT monto FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'Activo'`;
+        const creditosActivosQuery = `SELECT monto FROM creditos WHERE idCliente = ? AND estado = 'Activo'`;
 
         db.query(creditosActivosQuery, [idCliente], (errCreditos, resultCreditos) => {
             if (errCreditos) {
@@ -362,21 +370,12 @@ const createAdditionalCredit = (req, res) => {
             const sumaMontos = resultCreditos.reduce((sum, row) => sum + parseFloat(row.monto), 0);
             const totalPropuesto = sumaMontos + montoNum;
 
-            // Tope por clasificación
             let topeMaximo = 0;
             switch (clasificacion) {
-                case 'D':
-                    topeMaximo = 2000;
-                    break;
-                case 'C':
-                    topeMaximo = 4000;
-                    break;
-                case 'B':
-                    topeMaximo = 7500;
-                    break;
-                case 'A':
-                    topeMaximo = Infinity;
-                    break;
+                case 'D': topeMaximo = 2000; break;
+                case 'C': topeMaximo = 4000; break;
+                case 'B': topeMaximo = 7500; break;
+                case 'A': topeMaximo = Infinity; break;
                 default:
                     return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
             }
@@ -388,7 +387,6 @@ const createAdditionalCredit = (req, res) => {
                 });
             }
 
-            // Validaciones de semanas y montos mínimos
             if (semanasInt === 12 && montoNum < 1000) {
                 return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
             }
@@ -396,69 +394,77 @@ const createAdditionalCredit = (req, res) => {
                 return res.status(400).json({ error: true, message: 'El monto mínimo para 16 semanas es de $4000' });
             }
 
-            // Factor para cálculo de pagos
             let factor;
-            if (semanasInt === 12) {
-                factor = 1.5;
-            } else if (semanasInt === 16) {
-                factor = 1.583;
-            } else {
-                return res.status(400).json({ error: true, message: 'Solo se permiten créditos de 12 o 16 semanas' });
-            }
+            if (semanasInt === 12) factor = 1.5;
+            else if (semanasInt === 16) factor = 1.583;
+            else return res.status(400).json({ error: true, message: 'Solo se permiten créditos de 12 o 16 semanas' });
 
             const totalAPagar = montoNum * factor;
             const abonoSemanal = Math.round(totalAPagar / semanasInt);
-
-            const recargosNum = parseFloat(recargos ?? 0);
-            const atrasosNum = parseFloat(atrasos ?? 0);
             const efectivo = montoNum - recargosNum - atrasosNum;
 
             const query = `
-                INSERT INTO ${TABLE_CREDITOS} 
-                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, atrsos, abonoSemanal, estado, tipoCredito, efectivo)
+                INSERT INTO creditos
+                (idCliente, monto, semanas, horarioEntrega, fechaEntrega, fechaVencimiento, recargos, atrasos, abonoSemanal, estado, tipoCredito, efectivo)
                 VALUES (?, ?, ?, ?, NOW(), ?, ?, ?, ?, 'Activo', 'adicional', ?)
             `;
 
-            db.query(
-                query,
-                [idCliente, montoNum, semanasInt, horarioEntrega, fechaVencimientoF, recargos ?? null, abonoSemanal, efectivo],
-                (errInsert, resultInsert) => {
-                    if (errInsert) {
-                        console.error('Error al registrar crédito adicional:', errInsert);
-                        return res.status(500).json({ error: true, message: 'Error al guardar el crédito adicional' });
-                    }
+            const valores = [
+                idCliente,
+                montoNum,
+                semanasInt,
+                horarioEntrega,
+                fechaVencimientoF,
+                recargosNum,
+                atrasosNum,
+                abonoSemanal,
+                efectivo
+            ];
 
-                    const idCredito = resultInsert.insertId;
-                    const pagosQuery = `
-                        INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
-                        VALUES
-                    `;
-
-                    let pagosValues = [];
-                    for (let i = 0; i < semanasInt; i++) {
-                        const fechaPago = new Date(primerSábadoSiguiente);
-                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
-                        const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
-                        pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
-                    }
-
-                    db.query(pagosQuery + pagosValues.join(', '), (errPagos) => {
-                        if (errPagos) {
-                            console.error('Error al registrar pagos del crédito adicional:', errPagos);
-                            return res.status(500).json({ error: 'Error al guardar los pagos del crédito adicional' });
-                        }
-
-                        return res.status(201).json({
-                            abonoSemanal,
-                            efectivo,
-                            message: 'Crédito adicional registrado correctamente'
-                        });
-                    });
+            db.query(query, valores, (errInsert, resultInsert) => {
+                if (errInsert) {
+                    console.error('Error al registrar crédito adicional:', errInsert);
+                    return res.status(500).json({ error: true, message: 'Error al guardar el crédito adicional' });
                 }
-            );
+
+                const idCredito = resultInsert.insertId;
+                const pagosQuery = `
+                    INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
+                    VALUES
+                `;
+
+                let pagosValues = [];
+                for (let i = 0; i < semanasInt; i++) {
+                    const fechaPago = new Date(primerSábadoSiguiente);
+                    fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
+                    const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
+                    pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
+                }
+
+                db.query(pagosQuery + pagosValues.join(', '), (errPagos) => {
+                    if (errPagos) {
+                        console.error('Error al registrar pagos del crédito adicional:', errPagos);
+                        return res.status(500).json({ error: 'Error al guardar los pagos del crédito adicional' });
+                    }
+
+                    respuestaImprimir(idCredito)
+                                .then((respuesta) => {
+                                    return res.status(201).json({
+                                        abonoSemanal,
+                                        efectivo,
+                                        imprimir: respuesta
+                                    });
+                                })
+                                .catch((error) => {
+                                    console.error('Error al construir respuesta para imprimir:', error);
+                                    return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
+                                });
+                });
+            });
         });
     });
 };
+
 
 async function respuestaImprimir(idCredito) {
   return new Promise((resolve, reject) => {
