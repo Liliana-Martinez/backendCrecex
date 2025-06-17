@@ -19,6 +19,7 @@ router.post('/cliente', async (req, res) => {
             case 'collectors':
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
+                
             case 'modify':
                 try {
                     let resultado;
