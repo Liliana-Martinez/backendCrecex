@@ -19,10 +19,7 @@ router.post('/cliente', async (req, res) => {
             case 'collectors':
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
-<<<<<<< HEAD
-                
-            case 'modify': 
-=======
+
             case 'consult':
                 try {
                     const resultado = await searchController.searchConsult(nombreCompleto);
@@ -34,7 +31,6 @@ router.post('/cliente', async (req, res) => {
                 }
                 break;
             case 'modify':
->>>>>>> c954d18b69e30d7c58a696ea992924727797bbac
                 try {
                     let resultado;
                     if (selectedOption === 'client') {
