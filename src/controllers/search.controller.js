@@ -336,12 +336,11 @@ async function searchModifyGuarantor(nombreCompleto) {
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
             LIMIT 1`
         ;
-        const idClient = await queryAsync(queryIdClient, [formattedName]);
-        if (idClient === 0) {
+        const idClientResult = await queryAsync(queryIdClient, [formattedName]);
+        if (idClientResult.length === 0) {
             return res.status(404).json({ message: 'Cliente no encontrado' });
         }
-
-        console.log('Id del cliente para buscar su aval: ', idClient);
+        const idClient = idClientResult[0].idCliente;
 
         //Datos de los avales y sus garantias
         const queryForGuarantorData = `
@@ -352,6 +351,8 @@ async function searchModifyGuarantor(nombreCompleto) {
             a.apellidoMaterno,
             a.edad,
             a.domicilio,
+            a.colonia,
+            a.ciudad,
             a.telefono,
             a.trabajo,
             a.domicilioTrabajo,
@@ -363,14 +364,30 @@ async function searchModifyGuarantor(nombreCompleto) {
 
             const guarantorDataResult = await queryAsync(queryForGuarantorData, [idClient]);
             
-            const guarantorDataRow = guarantorDataResult[0];
-            const idAval = guarantorDataResult.idAval;
-
-            console.log(guarantorDataResult);
+            const guarantorData = guarantorDataResult.map((aval) => {
+                const garantiasArray = aval.garantias ? aval.garantias.split('|') : [];
+                return {
+                    name: aval.nombre,
+                    paternalLn: aval.apellidoPaterno,
+                    maternalLn: aval.apellidoMaterno,
+                    age: aval.edad,
+                    address: aval.domicilio,
+                    colonia: aval.colonia,
+                    city: aval.ciudad,
+                    phone: aval.telefono,
+                    nameJob: aval.trabajo,
+                    addressJob: aval.domicilioTrabajo,
+                    phoneJob: aval.telefonoTrabajo,
+                    garantias: {
+                        garantiaUno: garantiasArray[0] || '',
+                        garantiaDos: garantiasArray[1] || '',
+                        garantiaTres: garantiasArray[2] || ''
+                    }
+                }
+            });
         
             return {
-                idAval,
-                guarantorDataResult
+                guarantorData
             }
 
     } catch(error) {

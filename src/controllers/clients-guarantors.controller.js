@@ -5,7 +5,7 @@ const TABLE_GRNT_CNTS = 'garantias_cliente'; //GRNT=GARANTIAS CNTS=CLIENTES
 const TABLE_AVALES = 'avales';
 const TABLE_GRNT_AVAL = 'garantias_aval';
 
-// "Helper"
+//"Helper"
 function queryAsync(sql, params = []) {
 return new Promise((resolve, reject) => {
         db.query(sql, params, (err, results) => {
@@ -70,7 +70,7 @@ const insertClientGuarantees = (clientId, garantias) => {
 
 const insertGuarantor = (guarantorData) => {
     return new Promise((resolve, reject) => {
-        const query = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const query = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         const personalData = [
             guarantorData.clientId,
@@ -79,6 +79,8 @@ const insertGuarantor = (guarantorData) => {
             guarantorData.maternalLn,
             guarantorData.age,
             guarantorData.address,
+            guarantorData.colonia,
+            guarantorData.city,
             guarantorData.phone,
             guarantorData.nameJob,
             guarantorData.addressJob,
