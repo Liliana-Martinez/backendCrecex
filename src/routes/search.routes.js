@@ -19,6 +19,16 @@ router.post('/cliente', async (req, res) => {
             case 'collectors':
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
+            case 'consult':
+                try {
+                    const resultado = await searchController.searchConsult(nombreCompleto);
+                    return res.json(resultado);
+                } catch (error) {
+                    console.error('Error al consultar el cliente: ', error);
+                    res.status(404).json({ error: 'Error en la busqueda del cliente' });
+
+                }
+                break;
             case 'modify':
                 try {
                     let resultado;
@@ -27,12 +37,9 @@ router.post('/cliente', async (req, res) => {
                         resultado = await searchController.searchModifyClient(nombreCompleto);
                     } else if (selectedOption === 'guarantorp' || selectedOption === 'guarantors') {
                         resultado = await searchController.searchModifyGuarantor(nombreCompleto);
-                        console.log('Datos de los avales del cliente para modificar losavales');
                     } else {
                         return res.status(400).json({ message: 'Opción no reconocida' });
                     }
-
-                    console.log('Resultado: ', resultado);
                     return res.json(resultado);
                 } catch (error) {
                     console.error('Error al modificar datos', error);
