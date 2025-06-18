@@ -92,6 +92,7 @@ const createNewCredit = (req, res) => {
                 const totalAPagar = montoNum * factor;
                 const abonoSemanal = Math.round(totalAPagar / semanasInt);
                 const efectivo = montoNum - recargosNum - atrasosNum;
+                
 
                 const query = `
                     INSERT INTO ${TABLE_CREDITOS} 
@@ -109,6 +110,9 @@ const createNewCredit = (req, res) => {
                         }
 
                         const idCredito = result.insertId;
+                        const semanasRestantes =0;
+                        const descuentoSemanas = 0;
+                        const abonoAnterior = 0;
                         const pagosQuery = `
                             INSERT INTO ${TABLE_PAGOS} (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
                             VALUES
@@ -117,6 +121,7 @@ const createNewCredit = (req, res) => {
                         let pagosValues = [];
                         for (let i = 0; i < semanasInt; i++) {
                             const fechaPago = new Date(primerSábadoSiguiente);
+                            
                             fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
                             const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
                             pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
@@ -133,6 +138,9 @@ const createNewCredit = (req, res) => {
                                     return res.status(201).json({
                                         abonoSemanal,
                                         efectivo,
+                                        semanasRestantes,
+                                        abonoAnterior,
+                                        descuentoSemanas,
                                         imprimir: respuesta
                                     });
                                 })
@@ -207,7 +215,7 @@ const createRenewCredit = (req, res) => {
             });
         }
 
-        const descuentoSemanasRestantes = semanasRestantes > 0 ? semanasRestantes * abonoAnterior : 0;
+        const descuentoSemanas = semanasRestantes > 0 ? semanasRestantes * abonoAnterior : 0;
 
         const queryClasificacion = `SELECT clasificacion FROM clientes WHERE idCliente = ?`;
         db.query(queryClasificacion, [idCliente], (errClas, resultClas) => {
@@ -247,7 +255,7 @@ const createRenewCredit = (req, res) => {
                 return res.status(400).json({ error: true, message: 'El monto no cumple con la clasificación del cliente' });
             }
 
-            const efectivo = montoNum - recargosNum - atrasosNum - descuentoSemanasRestantes;
+            const efectivo = montoNum - recargosNum - atrasosNum - descuentoSemanas;
 
             const insertCredito = `
                 INSERT INTO creditos
@@ -305,6 +313,9 @@ const createRenewCredit = (req, res) => {
                                     return res.status(201).json({
                                         abonoSemanal,
                                         efectivo,
+                                        semanasRestantes,
+                                        abonoAnterior,
+                                        descuentoSemanas,
                                         imprimir: respuesta
                                     });
                                 })
@@ -428,6 +439,9 @@ const createAdditionalCredit = (req, res) => {
                 }
 
                 const idCredito = resultInsert.insertId;
+                const semanasRestantes =0;
+                const descuentoSemanas = 0;
+                const abonoAnterior = 0;
                 const pagosQuery = `
                     INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado)
                     VALUES
@@ -452,6 +466,9 @@ const createAdditionalCredit = (req, res) => {
                                     return res.status(201).json({
                                         abonoSemanal,
                                         efectivo,
+                                        semanasRestantes,
+                                        abonoAnterior,
+                                        descuentoSemanas,
                                         imprimir: respuesta
                                     });
                                 })
