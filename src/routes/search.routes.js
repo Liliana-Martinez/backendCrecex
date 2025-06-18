@@ -32,7 +32,6 @@ router.post('/cliente', async (req, res) => {
             case 'modify':
                 try {
                     let resultado;
-
                     if (selectedOption === 'client') {
                         resultado = await searchController.searchModifyClient(nombreCompleto);
                     } else if (selectedOption === 'guarantorp' || selectedOption === 'guarantors') {
@@ -41,6 +40,7 @@ router.post('/cliente', async (req, res) => {
                         return res.status(400).json({ message: 'Opción no reconocida' });
                     }
                     return res.json(resultado);
+                    /** */
                 } catch (error) {
                     console.error('Error al modificar datos', error);
                     return res.status(500).json({ error: 'Error al modificar datos' });
