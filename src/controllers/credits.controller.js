@@ -171,7 +171,6 @@ const createRenewCredit = (req, res) => {
     if (![12, 16].includes(semanasInt)) {
         return res.status(400).json({ error: true, message: 'Solo se permiten créditos de 12 o 16 semanas' });
     }
-
     const hoy = new Date();
     const primerSábadoSiguiente = new Date(hoy);
     const diasHastaSábado = (6 - hoy.getDay() + 7) % 7;

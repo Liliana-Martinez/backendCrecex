@@ -54,7 +54,8 @@ const SearchCredit = (nombreCompleto) => {
                 const queryPagos = `
                     SELECT numeroSemana, cantidad, estado
                     FROM ${TABLE_PAGOS}
-                    WHERE idCredito = ? AND estado = 'pagado'
+                    WHERE idCredito = ? 
+                        AND (estado = 'pagado' OR estado = 'adelantado')
                     ORDER BY numeroSemana DESC
                     LIMIT 1
                 `;
