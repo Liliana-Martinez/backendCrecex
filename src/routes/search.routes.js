@@ -19,6 +19,7 @@ router.post('/cliente', async (req, res) => {
             case 'collectors':
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
+
             case 'consult':
                 try {
                     const resultado = await searchController.searchConsult(nombreCompleto);
@@ -55,8 +56,6 @@ router.post('/cliente', async (req, res) => {
 
     } catch (error) {
         console.error('Error al procesar la solicitud:', error);
-
-        // Aquí usamos el código personalizado si existe, si no mandamos 500
         return res.status(error.code || 500).json({ message: error.message || 'Error en el servidor' });
     }
 });

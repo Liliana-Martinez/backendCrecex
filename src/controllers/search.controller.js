@@ -4,7 +4,7 @@ const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
 const TABLE_AVALES = 'avales'
 
-// "Helper"
+
 function queryAsync(sql, params = []) {
 return new Promise((resolve, reject) => {
         db.query(sql, params, (err, results) => {
@@ -15,65 +15,93 @@ return new Promise((resolve, reject) => {
 }  
 
 const SearchCredit = (nombreCompleto) => {
-    return new Promise((resolve, reject) => {
-        const queryCliente = `
-            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
-            FROM ${TABLE_CLIENTES}
-            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+  return new Promise((resolve, reject) => {
+    const queryCliente = `
+      SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
+      FROM ${TABLE_CLIENTES}
+      WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
+    `;
+
+    const formattedNombre = `%${nombreCompleto.trim()}%`;
+
+    db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+      if (err) return reject({ code: 500, message: 'Error al buscar cliente' });
+
+      if (clienteRows.length === 0) {
+        return reject({ code: 404, message: 'Cliente no encontrado' });
+      }
+
+      const cliente = clienteRows[0];
+      const idCliente = cliente.idCliente;
+
+      const queryCredito = `
+        SELECT idCredito, monto, fechaEntrega, semanas, abonoSemanal
+        FROM ${TABLE_CREDITOS}
+        WHERE idCliente = ? AND estado = 'activo'
+        LIMIT 1
+      `;
+
+      db.query(queryCredito, [idCliente], (err, creditoRows) => {
+        if (err) return reject({ code: 500, message: 'Error al buscar crédito' });
+
+        const credito = creditoRows[0] || null;
+
+        if (!credito) {
+          return resolve({ cliente, credito: null, pagos: [], totalDescontarSemanas: 0 });
+        }
+
+        const idCredito = credito.idCredito;
+
+        const queryUltimaSemana = `
+          SELECT numeroSemana, cantidad, cantidadPagada, estado
+          FROM ${TABLE_PAGOS}
+          WHERE idCredito = ?
+            AND (estado = 'pagado' OR estado = 'adelantado')
+          ORDER BY numeroSemana DESC
+          LIMIT 1
         `;
 
-        const formattedNombre = `%${nombreCompleto.trim()}%`;
+        db.query(queryUltimaSemana, [idCredito], (err, pagosRows) => {
+          if (err) return reject({ code: 500, message: 'Error al buscar última semana pagada' });
 
-        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-            if (err) return reject({ code: 500, message: 'Error al buscar cliente' });
+          const ultimaSemanaPago = pagosRows.length > 0 ? pagosRows[0] : null;
+          const ultimaSemana = ultimaSemanaPago ? ultimaSemanaPago.numeroSemana : 0;
 
-            if (clienteRows.length === 0) {
-                return reject({ code: 404, message: 'Cliente no encontrado' });
+          const queryPagosSiguientes = `
+            SELECT numeroSemana, cantidad, cantidadPagada, estado
+            FROM ${TABLE_PAGOS}
+            WHERE idCredito = ?
+              AND numeroSemana > ?
+            ORDER BY numeroSemana ASC
+          `;
 
+          db.query(queryPagosSiguientes, [idCredito, ultimaSemana], (err, pagosRestantes) => {
+            if (err) return reject({ code: 500, message: 'Error al calcular semanas restantes' });
+
+            let totalDescontarSemanas = 0;
+
+            for (let pago of pagosRestantes) {
+              if (pago.estado === 'adelantadoIncompleto') {
+                totalDescontarSemanas += pago.cantidad - pago.cantidadPagada;
+              } else if (pago.estado === 'pendiente') {
+                totalDescontarSemanas += pago.cantidad;
+              }
             }
 
-            const cliente = clienteRows[0];
-            const idCliente = cliente.idCliente;
-
-            const queryCredito = `
-                SELECT idCredito, monto, fechaEntrega, semanas, abonoSemanal
-                FROM ${TABLE_CREDITOS}
-                WHERE idCliente = ? AND estado = 'activo'
-                LIMIT 1
-            `;
-
-            db.query(queryCredito, [idCliente], (err, creditoRows) => {
-                if (err) return reject({ code: 500, message: 'Error al buscar crédito' });
-
-                const credito = creditoRows[0] || null;
-
-                if (!credito) {
-                    return resolve({ cliente, credito: null, pagos: [] });
-                }
-
-                const queryPagos = `
-                    SELECT numeroSemana, cantidad, estado
-                    FROM ${TABLE_PAGOS}
-                    WHERE idCredito = ? AND estado = 'pagado'
-                    ORDER BY numeroSemana DESC
-                    LIMIT 1
-                `;
-
-                db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
-                    if (err) return reject({ code: 500, message: 'Error al buscar pagos' });
-
-                    const pagos = pagosRows.length > 0 ? pagosRows : [];
-
-                    return resolve({
-                        cliente,
-                        credito,
-                        pagos
-                    });
-                });
+            return resolve({
+              cliente,
+              credito,
+              pagos: ultimaSemanaPago ? [ultimaSemanaPago] : [],
+              semanas: ultimaSemana,
+              totalDescontarSemanas
             });
+          });
         });
+      });
     });
+  });
 };
+
 
 const SearchCollectors = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
