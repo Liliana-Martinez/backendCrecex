@@ -74,4 +74,19 @@ router.put('/modify/client', async (req, res) => {
     }
 });
 
+router.put('/modify/guarantor', async (req, res) => {
+    const idAval = req.body.id;
+    const dataToUpdate = req.body;
+    delete dataToUpdate.id;
+    
+    try {
+        const resultado = await clientGuarantor.updateGuarantor(idAval, dataToUpdate);
+        console.log('Resultado de la actualizacion: ', resultado);
+        return res.json({ message: 'Datos actualizados correctamente', data: resultado});
+    } catch(error) {
+        console.error('Error al modificar los datos del aval', error);
+        return res.status(500).json({ message: 'Error al modificar los datos del aval.'})
+    }
+})
+
 module.exports = router;

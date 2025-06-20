@@ -366,7 +366,7 @@ async function searchModifyGuarantor(nombreCompleto) {
             
             const guarantorData = guarantorDataResult.map((aval) => {
                 const garantiasArray = aval.garantias ? aval.garantias.split('|') : [];
-                return {
+                /*return {
                     name: aval.nombre,
                     paternalLn: aval.apellidoPaterno,
                     maternalLn: aval.apellidoMaterno,
@@ -383,11 +383,11 @@ async function searchModifyGuarantor(nombreCompleto) {
                         garantiaDos: garantiasArray[1] || '',
                         garantiaTres: garantiasArray[2] || ''
                     }
-                }
+                }*/
             });
         
             return {
-                guarantorData
+                guarantorDataResult
             }
 
     } catch(error) {

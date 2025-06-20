@@ -170,12 +170,55 @@ async function updateClient(idCliente, dataToUpdate) {
     };
 }
 
+async function updateGuarantor(idAval, dataToUpdate) {
+    console.log('Id del cliente a modificar: ', idAval);
+    console.log('Datos que se van a modificar: ', dataToUpdate);
+    console.log('Dentro de updateGuarantor');
+
+    if (!idAval || Object.keys(dataToUpdate).length === 0) {
+        throw new Error('No hay datos para actualizar');
+    }
+
+    const { garantias, ...avalFields } = dataToUpdate;
+     let resultAval = null;
+
+     if (Object.keys(avalFields).length > 0) {
+        const campos = Object.keys(avalFields);
+        const valores = campos.map(key => avalFields[key]);
+        const setClause = campos.map(key => `${key} = ?`).join(', ');
+        const queryToUpdate = `UPDATE ${TABLE_AVALES} SET ${setClause} WHERE idAval = ?`;
+
+        valores.push(idAval);
+        resultAval = await queryAsync(queryToUpdate, valores);
+     }
+
+     let resultGarantias = [];
+
+     if (garantias && typeof garantias === 'object') {
+        await queryAsync('DELETE FROM garantias_aval WHERE idAval = ?',  [idAval]);
+
+        for (const key in garantias) {
+            const descripcion = garantias[key];
+            if (descripcion && descripcion.trim() !== ''){
+                const insertGarantiaSQL = `INSERT INTO garantias_aval (idAval, descripcion) VALUES (?, ?)`;
+                const insertResult = await queryAsync(insertGarantiaSQL, [idAval, descripcion]);
+            }
+        }
+     }
+
+     return {
+        message: 'Datos actualizados correctamente',
+        aval: resultAval,
+        garantias: resultGarantias
+     };
+}
 
 module.exports = {
     insert,
     insertClientGuarantees,
     insertGuarantor,
     insertAvalGarantias,
-    updateClient
+    updateClient,
+    updateGuarantor
 }
 
