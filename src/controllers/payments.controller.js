@@ -1,5 +1,6 @@
 const db = require('../db');
 
+//Llenado de tabla cuando busca al cliente
 async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
     return new Promise((res, rej) => {
@@ -32,6 +33,7 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
   let falla = 0;
 
   pagos.sort((a, b) => new Date(a.fechaEsperada) - new Date(b.fechaEsperada));
+
   pagos.forEach(pago => {
     const cantidad = Number(pago.cantidad ?? 0);
     const pagado = Number(pago.cantidadPagada ?? 0);
@@ -43,25 +45,22 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
 
     const mismaFecha = fechaEsperada.toISOString().slice(0, 10) === ref.toISOString().slice(0, 10);
 
-    if (fechaEsperada < ref) {
-      if (estado === 'pendiente' || estado === 'incompleto') {
-        let falta = cantidad - pagado;
-        if (adelantoDisponible >= falta) {
-          adelantoDisponible -= falta;
-        } else {
-          atraso += falta - adelantoDisponible;
-          adelantoDisponible = 0;
-        }
+    if (estado === 'atraso') {
+      atraso += cantidad - pagado;
+    }
+
+    if (fechaEsperada > ref) {
+      if (
+        estado === 'adelantado' ||
+        estado === 'adelantadoincompleto' || // Nuevo estado
+        (estado === 'pagado' && fechaPagada && fechaPagada < fechaEsperada)
+      ) {
+        adelantoDisponible += pagado;
       }
-    } else if (mismaFecha) {
-      if (estado === 'pendiente') {
-        if (adelantoDisponible >= cantidad) {
-          adelantoDisponible -= cantidad;
-        } else {
-          falla += cantidad - adelantoDisponible;
-          adelantoDisponible = 0;
-        }
-      } else if (estado === 'incompleto') {
+    }
+
+    if (mismaFecha) {
+      if (estado === 'pendiente' || estado === 'incompleto') {
         let falta = cantidad - pagado;
         if (adelantoDisponible >= falta) {
           adelantoDisponible -= falta;
@@ -69,13 +68,6 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
           falla += falta - adelantoDisponible;
           adelantoDisponible = 0;
         }
-      }
-    } else if (fechaEsperada > ref) {
-      if (
-        estado === 'adelantado' ||
-        (estado === 'pagado' && fechaPagada && fechaPagada < fechaEsperada)
-      ) {
-        adelantoDisponible += pagado;
       }
     }
   });
@@ -86,6 +78,7 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
     falla
   };
 }
+
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
@@ -146,6 +139,10 @@ const getClientsFromZone = (idZona) => {
     });
   });
 };
+
+
+
+// Registro de pagos
 const registrarPagos = async (pagos) => {
   try {
     for (const pago of pagos) {
@@ -232,8 +229,6 @@ const registrarPagos = async (pagos) => {
           }
           continue;
         }
-
-        // 4. Si ya está pagado o pagadoAtrasado, saltar
         if (estado === 'pagado' || estado === 'pagadoAtrasado') {
           continue;
         }
@@ -247,7 +242,6 @@ const registrarPagos = async (pagos) => {
   }
 };
 
-
 const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
   return new Promise((resolve, reject) => {
     db.query(
@@ -260,8 +254,6 @@ const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
     );
   });
 };
-
-
 
 const actualizarAdelantos = async () => {
   try {
