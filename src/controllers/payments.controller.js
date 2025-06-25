@@ -72,66 +72,6 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
   };
 }
 
-/*
-const getClientsFromZone = (idZona) => {
-  console.log('ID en el controller:', idZona);
-
-  const getLastSaturday = () => {
-    const today = new Date();
-    const day = today.getDay();
-    const diff = day === 6 ? 0 : day + 1;
-    const lastSaturday = new Date(today);
-    lastSaturday.setDate(today.getDate() - diff);
-    return lastSaturday.toISOString().split('T')[0];
-  };
-
-  const fechaEsperada = getLastSaturday();
-
-  return new Promise((resolve, reject) => {
-    const query = `
-      SELECT 
-        CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
-        c.idCliente,
-        c.clasificacion,
-        cr.idCredito,
-        cr.fechaEntrega,
-        cr.fechaVencimiento,
-        cr.abonoSemanal AS montoSemanal,
-        cr.cumplimiento,
-        (
-          SELECT COUNT(*) 
-          FROM creditos 
-          WHERE creditos.idCliente = c.idCliente
-            AND creditos.estado IN ('Activo', 'Pagado', 'Adicional', 'Vencido')
-        ) AS numeroCreditos,
-        p.numeroSemana
-      FROM clientes AS c
-      JOIN creditos AS cr ON c.idCliente = cr.idCliente
-      LEFT JOIN pagos AS p 
-        ON cr.idCredito = p.idCredito
-        AND p.fechaEsperada = ?
-      WHERE c.idZona = ?
-        AND cr.estado = 'Activo'
-    `;
-
-    db.query(query, [fechaEsperada, idZona], async (error, results) => {
-      if (error) {
-        return reject(error);
-      }
-
-      if (!results || results.length === 0) {
-        return resolve(null);
-      }
-
-      try {
-        const resultadosConCalculos = await calcularPagos(results, fechaEsperada);
-        resolve(resultadosConCalculos);
-      } catch (err) {
-        reject(err);
-      }
-    });
-  });
-};*/
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
 
