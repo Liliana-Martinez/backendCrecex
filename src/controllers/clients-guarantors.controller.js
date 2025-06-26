@@ -171,23 +171,36 @@ async function updateClient(idCliente, dataToUpdate) {
 }
 
 async function updateGuarantor(idAval, dataToUpdate) {
-    console.log('Id del cliente a modificar: ', idAval);
-    console.log('Datos que se van a modificar: ', dataToUpdate);
-    console.log('Dentro de updateGuarantor');
 
     if (!idAval || Object.keys(dataToUpdate).length === 0) {
         throw new Error('No hay datos para actualizar');
     }
 
+    //Desestructuracion para separar las garantias, es decir, dataToUpdate = {garantias} y {avalFields}
     const { garantias, ...avalFields } = dataToUpdate;
-     let resultAval = null;
+    let resultAval = null;
+
+    const avalFieldsMap = {
+        'Nombre': 'nombre',
+        'Apellido paterno': 'apellidoPaterno',
+        'Apellido materno': 'apellidoMaterno',
+        'Edad': 'edad',
+        'Domicilio': 'domicilio',
+        'Colonia': 'colonia',
+        'Ciudad': 'ciudad',
+        'Teléfono': 'telefono',
+        'Nombre del trabajo' : 'trabajo',
+        'Domicilio del trabajo': 'domicilioTrabajo',
+        'Teléfono del trabajo': 'telefonoTrabajo'
+    };
 
      if (Object.keys(avalFields).length > 0) {
-        const campos = Object.keys(avalFields);
-        const valores = campos.map(key => avalFields[key]);
+        const campos = Object.keys(avalFields).map(key => avalFieldsMap[key] || key);
+        const valores = Object.keys(avalFields).map(key => avalFields[key]);
+
         const setClause = campos.map(key => `${key} = ?`).join(', ');
         const queryToUpdate = `UPDATE ${TABLE_AVALES} SET ${setClause} WHERE idAval = ?`;
-
+        
         valores.push(idAval);
         resultAval = await queryAsync(queryToUpdate, valores);
      }
@@ -201,7 +214,8 @@ async function updateGuarantor(idAval, dataToUpdate) {
             const descripcion = garantias[key];
             if (descripcion && descripcion.trim() !== ''){
                 const insertGarantiaSQL = `INSERT INTO garantias_aval (idAval, descripcion) VALUES (?, ?)`;
-                const insertResult = await queryAsync(insertGarantiaSQL, [idAval, descripcion]);
+                await queryAsync(insertGarantiaSQL, [idAval, descripcion]);
+                //const insertResult = await queryAsync(insertGarantiaSQL, [idAval, descripcion]);
             }
         }
      }

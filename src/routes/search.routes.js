@@ -40,7 +40,7 @@ router.post('/cliente', async (req, res) => {
                     } else {
                         return res.status(400).json({ message: 'Opción no reconocida' });
                     }
-                    return res.json(resultado);
+                    return res.json(resultado); //Esto se ejecuta la respuesta del back
                     /** */
                 } catch (error) {
                     console.error('Error al modificar datos', error);
