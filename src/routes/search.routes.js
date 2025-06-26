@@ -22,7 +22,7 @@ router.post('/cliente', async (req, res) => {
                     return res.json(resultado);
                 } catch (error) {
                     console.error('Error al consultar el cliente: ', error);
-                    res.status(404).json({ error: 'Error en la busqueda del cliente' });
+                    res.status(404).json({ error: 'Lili cara de cola' });
                 }
                 break;
             case 'modify':

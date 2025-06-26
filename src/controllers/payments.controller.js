@@ -104,6 +104,7 @@ const getClientsFromZone = (idZona) => {
         CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
         c.idCliente,
         c.clasificacion,
+        c.puntos,
         cr.idCredito,
         cr.fechaEntrega,
         cr.fechaVencimiento,
