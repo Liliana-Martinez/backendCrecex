@@ -1,5 +1,6 @@
 const db = require('../db');
 
+//Llenado de tabla cuando busca al cliente
 async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
     return new Promise((res, rej) => {
@@ -26,12 +27,13 @@ async function calcularPagos(clientes, fechaEsperada) {
 }
 
 function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
-  const ref = new Date(fechaReferencia);
+  const ref = new Date(fechaReferencia); // Sábado de la semana actual
   let adelantoDisponible = 0;
   let atraso = 0;
   let falla = 0;
 
   pagos.sort((a, b) => new Date(a.fechaEsperada) - new Date(b.fechaEsperada));
+
   pagos.forEach(pago => {
     const cantidad = Number(pago.cantidad ?? 0);
     const pagado = Number(pago.cantidadPagada ?? 0);
@@ -41,40 +43,23 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
       ? new Date(pago.fechaPagada)
       : null;
 
-    const mismaFecha = fechaEsperada.toISOString().slice(0, 10) === ref.toISOString().slice(0, 10);
+    const mismaSemana = fechaEsperada.toISOString().slice(0, 10) === ref.toISOString().slice(0, 10);
 
-    if (fechaEsperada < ref) {
+    // Si tiene el estado atraso, te hace resta de lo que pago y lo que debio haber pagadodo
+    if (estado === 'atraso') {
+      atraso += cantidad - pagado;
+    }
+
+    // Va  atener falla solo si los estados con pendientes o incompleto
+    if (mismaSemana) {
       if (estado === 'pendiente' || estado === 'incompleto') {
-        let falta = cantidad - pagado;
-        if (adelantoDisponible >= falta) {
-          adelantoDisponible -= falta;
-        } else {
-          atraso += falta - adelantoDisponible;
-          adelantoDisponible = 0;
-        }
+        falla += cantidad - pagado;
       }
-    } else if (mismaFecha) {
-      if (estado === 'pendiente') {
-        if (adelantoDisponible >= cantidad) {
-          adelantoDisponible -= cantidad;
-        } else {
-          falla += cantidad - adelantoDisponible;
-          adelantoDisponible = 0;
-        }
-      } else if (estado === 'incompleto') {
-        let falta = cantidad - pagado;
-        if (adelantoDisponible >= falta) {
-          adelantoDisponible -= falta;
-        } else {
-          falla += falta - adelantoDisponible;
-          adelantoDisponible = 0;
-        }
-      }
-    } else if (fechaEsperada > ref) {
-      if (
-        estado === 'adelantado' ||
-        (estado === 'pagado' && fechaPagada && fechaPagada < fechaEsperada)
-      ) {
+    }
+
+    // Aqui solo se toman las semanas futuras 
+    if (fechaEsperada > ref) {
+      if (estado === 'adelantado' || estado === 'adelantadoincompleto') {
         adelantoDisponible += pagado;
       }
     }
@@ -90,6 +75,7 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
 
+  // Último sábado (para calcular atrasos, fallas, etc.)
   const getLastSaturday = () => {
     const today = new Date();
     const day = today.getDay();
@@ -99,7 +85,18 @@ const getClientsFromZone = (idZona) => {
     return lastSaturday.toISOString().split('T')[0];
   };
 
+  // Próximo sábado (para PDF)
+  const getNextSaturday = () => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = (6 - day + 7) % 7;
+    const nextSaturday = new Date(today);
+    nextSaturday.setDate(today.getDate() + diff);
+    return nextSaturday.toISOString().split('T')[0];
+  };
+
   const fechaEsperada = getLastSaturday();
+  const fechaSiguienteSemana = getNextSaturday();
 
   return new Promise((resolve, reject) => {
     const query = `
@@ -107,11 +104,15 @@ const getClientsFromZone = (idZona) => {
         CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
         c.idCliente,
         c.clasificacion,
+        c.puntos,
         cr.idCredito,
         cr.fechaEntrega,
         cr.fechaVencimiento,
         cr.abonoSemanal AS montoSemanal,
+        cr.monto,
         cr.cumplimiento,
+        z.codigoZona,
+        z.promotora,
         (
           SELECT COUNT(*) 
           FROM creditos 
@@ -124,37 +125,61 @@ const getClientsFromZone = (idZona) => {
       LEFT JOIN pagos AS p 
         ON cr.idCredito = p.idCredito
         AND p.fechaEsperada = ?
+      JOIN zonas AS z ON c.idZona = z.idZona
       WHERE c.idZona = ?
         AND cr.estado = 'Activo'
     `;
 
     db.query(query, [fechaEsperada, idZona], async (error, results) => {
-      if (error) {
-        return reject(error);
-      }
+      if (error) return reject(error);
+      if (!results || results.length === 0) return resolve(null);
 
-      if (!results || results.length === 0) {
-        return resolve(null);
-      }
+      // Tomamos datos generales desde el primer resultado
+      const { codigoZona, promotora } = results[0];
 
       try {
-        const resultadosConCalculos = await calcularPagos(results, fechaEsperada);
-        resolve(resultadosConCalculos);
+        const clientes = await Promise.all(results.map(cliente => {
+          return new Promise((res, rej) => {
+            const pagosQuery = `
+              SELECT cantidad, cantidadPagada, fechaEsperada, fechaPagada, estado
+              FROM pagos
+              WHERE idCredito = ?
+              ORDER BY fechaEsperada
+            `;
+            db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
+              if (err) return rej(err);
+              const { atraso, adelanto, falla } = calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
+              res({
+                ...cliente,
+                atraso,
+                adelanto,
+                falla
+              });
+            });
+          });
+        }));
+
+        resolve({
+          codigoZona,
+          promotora,
+          fechaSiguienteSemana,
+          clientes
+        });
       } catch (err) {
         reject(err);
       }
     });
   });
 };
+
+// Registro de pagos
 const registrarPagos = async (pagos) => {
   try {
     for (const pago of pagos) {
       const { idCredito, payment } = pago;
       let monto = Number(payment);
-
       if (!idCredito || isNaN(monto) || monto <= 0) continue;
 
-      // Obtener semanas del crédito
       const resultado = await new Promise((resolve, reject) => {
         db.query(
           'SELECT * FROM pagos WHERE idCredito = ? ORDER BY numeroSemana ASC',
@@ -171,8 +196,12 @@ const registrarPagos = async (pagos) => {
 
       const hoy = new Date();
       const hoySábado = new Date(hoy);
-      hoySábado.setDate(hoy.getDate() - hoy.getDay() + 6); // siguiente sábado
+      const dia = hoySábado.getDay(); // 0=Domingo, ..., 6=Sábado
+      const diferencia = dia === 6 ? 0 : dia + 1;
+      hoySábado.setDate(hoySábado.getDate() - diferencia);
+      hoySábado.setHours(0, 0, 0, 0);
 
+      // Paso 1: semana actual (pendiente o incompleto)
       for (const semana of semanas) {
         if (monto <= 0) break;
 
@@ -180,62 +209,80 @@ const registrarPagos = async (pagos) => {
         const cantidadEsperada = Number(cantidad);
         const pagado = Number(cantidadPagada) || 0;
         const restante = cantidadEsperada - pagado;
-
         const fechaSemana = new Date(fechaEsperada);
-        const esSemanaActualOPasada = fechaSemana <= hoySábado;
+        fechaSemana.setHours(0, 0, 0, 0);
+        const esSemanaActual = fechaSemana.toDateString() === hoySábado.toDateString();
 
-        // 1. Si hay una semana con estado 'incompleto', completarla primero
-        if (estado === 'adelantado' && restante > 0) {
+        if (esSemanaActual && (estado === 'pendiente' || estado === 'incompleto')) {
           if (monto >= restante) {
-            await actualizarPago(idPago, cantidadEsperada, 'adelantado');
+            await actualizarPago(idPago, cantidadEsperada, 'pagado');
             monto -= restante;
           } else {
-            await actualizarPago(idPago, pagado + monto, 'adelantado');
+            await actualizarPago(idPago, pagado + monto, 'incompleto');
             monto = 0;
           }
-          continue;
+          break;
         }
+      }
 
-        // 2. Si hay una semana en 'adelanto' y aún no se completa, seguir sumando ahí
-        if (estado === 'adelanto' && restante > 0) {
-          if (monto >= restante) {
-            // COMPLETA el adelanto, pero NO cambia el estado aún, eso se hace con otra lógica
-            await actualizarPago(idPago, cantidadEsperada, 'adelanto');
-            monto -= restante;
-          } else {
-            await actualizarPago(idPago, pagado + monto, 'adelanto');
-            monto = 0;
+      // Paso 2: semanas con atraso (estado 'atraso')
+      for (const semana of semanas) {
+        if (monto <= 0) break;
+
+        const { idPago, cantidad, cantidadPagada, estado } = semana;
+        if (estado !== 'atraso') continue;
+
+        const cantidadEsperada = Number(cantidad);
+        const pagado = Number(cantidadPagada) || 0;
+        const restante = cantidadEsperada - pagado;
+
+        if (monto >= restante) {
+          await actualizarPago(idPago, cantidadEsperada, 'pagadoAtrasado');
+          monto -= restante;
+        } else {
+          await actualizarPago(idPago, pagado + monto, 'atraso');
+          monto = 0;
+        }
+      }
+
+      // Paso 3: semanas futuras como adelanto
+      for (const semana of semanas) {
+        if (monto <= 0) break;
+
+        const { idPago, cantidad, cantidadPagada, estado, fechaEsperada } = semana;
+        const cantidadEsperada = Number(cantidad);
+        const pagado = Number(cantidadPagada) || 0;
+        const restante = cantidadEsperada - pagado;
+        const fechaSemana = new Date(fechaEsperada);
+        fechaSemana.setHours(0, 0, 0, 0);
+        const esFuturo = fechaSemana > hoySábado;
+
+        if (esFuturo) {
+          // Si existe una semana con adelantoIncompleto, primero se debe completar
+          if (estado === 'adelantadoIncompleto') {
+            const nuevoTotal = pagado + monto;
+
+            if (nuevoTotal >= cantidadEsperada) {
+              await actualizarPago(idPago, cantidadEsperada, 'adelantado');
+              monto -= (cantidadEsperada - pagado);
+            } else {
+              await actualizarPago(idPago, nuevoTotal, 'adelantadoIncompleto');
+              monto = 0;
+              break; 
+            } 
           }
 
-          // 👇 ¡Importante! No avanzar hasta que se complete esta semana
-          if (pagado + monto < cantidadEsperada) break;
-
-          continue;
-        }
-
-        // 3. Semana pendiente actual
-        if (estado === 'pendiente') {
-          if (monto >= cantidadEsperada) {
-            await actualizarPago(
-              idPago,
-              cantidadEsperada,
-              esSemanaActualOPasada ? 'pagado' : 'adelanto'
-            );
-            monto -= cantidadEsperada;
-          } else {
-            await actualizarPago(
-              idPago,
-              monto,
-              esSemanaActualOPasada ? 'adelanto' : 'incompleto'
-            );
-            monto = 0;
+          // Semana futura sin pagos aún
+          if (estado === 'pendiente') {
+            if (monto >= cantidadEsperada) {
+              await actualizarPago(idPago, cantidadEsperada, 'adelantado');
+              monto -= cantidadEsperada;
+            } else {
+              await actualizarPago(idPago, pagado + monto, 'adelantadoIncompleto');
+              monto = 0;
+              break; // detenerse en la primera semana incompleta
+            }
           }
-          continue;
-        }
-
-        // 4. Si ya está pagado o pagadoAtrasado, saltar
-        if (estado === 'pagado' || estado === 'pagadoAtrasado') {
-          continue;
         }
       }
     }
@@ -246,7 +293,6 @@ const registrarPagos = async (pagos) => {
     return { success: false, message: 'Error al registrar pagos', error };
   }
 };
-
 
 const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
   return new Promise((resolve, reject) => {
@@ -260,8 +306,6 @@ const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
     );
   });
 };
-
-
 
 const actualizarAdelantos = async () => {
   try {
