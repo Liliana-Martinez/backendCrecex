@@ -313,21 +313,17 @@ async function searchModifyGuarantor(nombreCompleto) {
     try {
         const formattedName = `%${nombreCompleto.trim()}%`;
 
-        //consulta SQL para obtener el id del cliente y despues buscar los avales asociados a ese ID
+        //Buscar el id del nombre del cliente que llegó
         const queryIdClient = `
             SELECT idCliente 
             FROM ${TABLE_CLIENTES} 
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
             LIMIT 1`
         ;
-
-        //Procesar la consulta SQL
         const idClientResult = await queryAsync(queryIdClient, [formattedName]);
-
         if (idClientResult.length === 0) {
             return res.status(404).json({ message: 'Cliente no encontrado' });
         }
-        
         const idClient = idClientResult[0].idCliente;
 
         //Datos de los avales y sus garantias
@@ -352,8 +348,27 @@ async function searchModifyGuarantor(nombreCompleto) {
 
             const guarantorDataResult = await queryAsync(queryForGuarantorData, [idClient]);
             
-            /**Por aqui condicionar si el cliente tiene 1 o 2 avales  */
-            
+            const guarantorData = guarantorDataResult.map((aval) => {
+                const garantiasArray = aval.garantias ? aval.garantias.split('|') : [];
+                /*return {
+                    name: aval.nombre,
+                    paternalLn: aval.apellidoPaterno,
+                    maternalLn: aval.apellidoMaterno,
+                    age: aval.edad,
+                    address: aval.domicilio,
+                    colonia: aval.colonia,
+                    city: aval.ciudad,
+                    phone: aval.telefono,
+                    nameJob: aval.trabajo,
+                    addressJob: aval.domicilioTrabajo,
+                    phoneJob: aval.telefonoTrabajo,
+                    garantias: {
+                        garantiaUno: garantiasArray[0] || '',
+                        garantiaDos: garantiasArray[1] || '',
+                        garantiaTres: garantiasArray[2] || ''
+                    }
+                }*/
+            });
         
             return {
                 guarantorDataResult
