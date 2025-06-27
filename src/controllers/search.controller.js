@@ -265,7 +265,7 @@ async function searchModifyClient(nombreCompleto) {
         const clientDataResult = await queryAsync(queryForClientData, [formattedName]);
 
         if (clientDataResult.length === 0) {
-            throw new Error ('Cliente no encontrado.');
+            return { message: 'Cliente no encontrado' };
         }
 
         const clientDataRow = clientDataResult[0];
@@ -322,7 +322,7 @@ async function searchModifyGuarantor(nombreCompleto) {
         ;
         const idClientResult = await queryAsync(queryIdClient, [formattedName]);
         if (idClientResult.length === 0) {
-            throw new Error ('Cliente no encontrado.');
+            return res.status(404).json({ message: 'Cliente no encontrado' });
         }
         const idClient = idClientResult[0].idCliente;
 
