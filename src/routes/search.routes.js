@@ -12,10 +12,12 @@ router.post('/cliente', async (req, res) => {
         
         switch (modulo) {
             case 'new':
-            case 'renew':
             case 'additional':
                 result = await searchController.SearchCredit(nombreCompleto);
                 break;
+            case 'renew':
+                result = await searchController.SearchCreditRenew(nombreCompleto);
+                break; 
             case 'collectors':
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
@@ -28,8 +30,6 @@ router.post('/cliente', async (req, res) => {
                 } else if (selectedOption === 'guarantorp' || selectedOption === 'guarantors') {
                     result = await searchController.searchModifyGuarantor(nombreCompleto);
                 } 
-            /*default:
-                return res.status(400).json({ message: 'Módulo no reconocido' });*/
         }
         return res.status(200).json(result);
     } catch (error) {
