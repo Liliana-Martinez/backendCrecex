@@ -1,54 +1,48 @@
 const express = require('express');
 const router = express.Router();
 const searchController = require('../controllers/search.controller');
+
 router.post('/cliente', async (req, res) => {
     try {
-        const { nombreCompleto, modulo } = req.body;
-
+        const { nombreCompleto, modulo, selectedOption } = req.body;
         console.log('Nombre recibido:', nombreCompleto);
         console.log('Módulo solicitado:', modulo);
-
+        
         let result;
-
+        
         switch (modulo) {
             case 'new':
-            case 'renew':
             case 'additional':
                 result = await searchController.SearchCredit(nombreCompleto);
                 break;
+            case 'renew':
+                result = await searchController.SearchCreditRenew(nombreCompleto);
+                break; 
             case 'collectors':
                 result = await searchController.SearchCollectors(nombreCompleto);
                 break;
             case 'consult':
-                try {
-                    const resultado = await searchController.searchConsult(nombreCompleto);
-                    return res.json(resultado);
-                } catch (error) {
-                    console.error('Error al consultar el cliente: ', error);
-                    res.status(404).json({ error: 'Error en la busqueda del cliente' });
-
-                }
+                result = await searchController.searchConsult(nombreCompleto);  
+                break;
             case 'modify':
-                try {
-                    const resultado = await searchController.searchModify(nombreCompleto);
-                    console.log('Resultado: ', resultado);
-                    return res.json(resultado);
-                } catch (error) {
-                    console.error('Error al modificar datos del cliente', error);
-                    return res.status(500).json({ error: 'Error al modificar datos del cliente' });
-                }
-            default:
-                return res.status(400).json({ message: 'Módulo no reconocido' });
+                if (selectedOption === 'client') {
+                    result = await searchController.searchModifyClient(nombreCompleto);
+                } else if (selectedOption === 'guarantorp' || selectedOption === 'guarantors') {
+                    result = await searchController.searchModifyGuarantor(nombreCompleto);
+                } 
         }
-
         return res.status(200).json(result);
-
     } catch (error) {
         console.error('Error al procesar la solicitud:', error);
+        
+        //Manejo personalizado de los errores
+        if (error.message === 'Cliente no encontrado') {
+            return res.status(404).json({ message: 'Cliente no encontrado'});
+        }
 
-        // Aquí usamos el código personalizado si existe, si no mandamos 500
-        return res.status(error.code || 500).json({ message: error.message || 'Error en el servidor' });
+
+        //Otros errores
+        return res.status(500).json({ message: error.message || 'Error interno del servidor.'});
     }
 });
-
 module.exports = router;

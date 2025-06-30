@@ -2,11 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 require('./db');
+//require('../src/routes/cronJobs'); 
+
 
 const authRoutes = require('./routes/auth.routes');
 const clienGrntRoutes = require('./routes/clients-guarantors.routes');
 const zoneRoutes = require('./routes/zones.routes');
-
+const paymentsRouter = require('./routes/payments.routes');
 const creditsRouter = require('./routes/credits.routes');
 const searchRoutes = require('./routes/search.routes');
 const creditBureauRouter = require('./routes/credit-bureau.routes');
@@ -26,4 +28,5 @@ app.use('/api/credits', creditsRouter);
 app.use('/api/zones', zoneRoutes);
 app.use('/api/credit-bureau', creditBureauRouter);
 app.use('/api/search', searchRoutes);
+app.use('/api/payments', paymentsRouter);
 module.exports = app
