@@ -1,7 +1,4 @@
 const db = require('../db');
-const TABLE_ZONES = 'zonas';
-const TABLE_CLIENTES = 'clientes'
-const TABLE_CREDITOS = 'creditos';
 
 async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
@@ -37,14 +34,13 @@ async function calcularPagos(clientes, fechaEsperada) {
           adelanto = pagadoTotal - esperadoHastaHoy;
         }
 
-        // Verificar si la semana de fechaEsperada ya fue cubierta (por pago normal o adelantado)
+        // Verificar si la semana de fechaEsperada ya fue cubierta
         const semanaEsperada = pagos.find(p =>
           p.pagoFechaEsperada === fechaEsperada &&
-          ['pagado', 'adelantado', 'Pagado', 'Adelantado'].includes(p.estado.toLowerCase())
+          ['pagado', 'adelantado'].includes(p.estado.toLowerCase())
         );
 
         if (!semanaEsperada) {
-          // Verificar si hay suficiente adelanto para cubrir esta semana
           if (adelanto >= montoSemanal) {
             adelanto -= montoSemanal;
           } else {
@@ -60,7 +56,10 @@ async function calcularPagos(clientes, fechaEsperada) {
         });
       });
     });
+  }));
 
+  return results;
+}
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
@@ -123,8 +122,6 @@ const getClientsFromZone = (idZona) => {
     });
   });
 };
-
-
 
 module.exports = {
   getClientsFromZone,
