@@ -75,7 +75,7 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
 
-  // Último sábado (para calcular atrasos, fallas, etc.)
+  // Último sábado 
   const getLastSaturday = () => {
     const today = new Date();
     const day = today.getDay();
@@ -85,7 +85,7 @@ const getClientsFromZone = (idZona) => {
     return lastSaturday.toISOString().split('T')[0];
   };
 
-  // Próximo sábado (para PDF)
+  // Próximo sábado
   const getNextSaturday = () => {
     const today = new Date();
     const day = today.getDay();
@@ -104,7 +104,6 @@ const getClientsFromZone = (idZona) => {
         CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
         c.idCliente,
         c.clasificacion,
-        c.puntos,
         cr.idCredito,
         cr.fechaEntrega,
         cr.fechaVencimiento,

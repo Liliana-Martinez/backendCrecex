@@ -60,12 +60,7 @@ const createNewCredit = (req, res) => {
 
                 const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-                if (semanasInt === 12 && montoNum < 1000) {
-                    return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
-                }
-                if (semanasInt === 16 && montoNum < 4000) {
-                    return res.status(400).json({ error: true, message: 'El monto mínimo para 16 semanas es de $4000' });
-                }
+                
 
                 let validacionCorrecta = false;
                 switch (clasificacion) {
@@ -84,9 +79,16 @@ const createNewCredit = (req, res) => {
                     default:
                         return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
                 }
+                
 
                 if (!validacionCorrecta) {
                     return res.status(400).json({ error: true, message: 'El monto no cumple con las condiciones de la clasificación' });
+                }
+                if (semanasInt === 12 && montoNum < 1000) {
+                    return res.status(400).json({ error: true, message: 'El monto mínimo para 12 semanas es de $1000' });
+                }
+                if (semanasInt === 16 && montoNum < 4000) {
+                    return res.status(400).json({ error: true, message: 'El monto mínimo para 16 semanas es de $4000' });
                 }
 
                 const totalAPagar = montoNum * factor;

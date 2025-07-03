@@ -79,6 +79,91 @@ const SearchCredit = (nombreCompleto) => {
     });
 };
 
+const SearchCreditRenew = (nombreCompleto) => {
+    return new Promise((resolve, reject) => {
+        const queryCliente = `
+            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
+            FROM ${TABLE_CLIENTES}
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?`;
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+
+        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+            if (err) return reject({ code: 500, message: 'Error al buscar cliente' });
+            if (clienteRows.length === 0) return reject({ code: 404, message: 'Cliente no encontrado' });
+
+            const cliente = clienteRows[0];
+            const idCliente = cliente.idCliente;
+
+            const queryCredito = `
+                SELECT idCredito, monto, fechaEntrega, semanas, abonoSemanal
+                FROM ${TABLE_CREDITOS}
+                WHERE idCliente = ? AND estado = 'activo'
+                LIMIT 1`;
+            db.query(queryCredito, [idCliente], (err, creditoRows) => {
+                if (err) return reject({ code: 500, message: 'Error al buscar crédito' });
+
+                const credito = creditoRows[0] || null;
+                if (!credito) {
+                    return resolve({ cliente, credito: null, pagos: [], totalDescontarSemanas: 0 });
+                }
+
+                const idCredito = credito.idCredito;
+
+                const queryUltimaSemana = `
+                    SELECT numeroSemana, cantidad, cantidadPagada, estado
+                    FROM ${TABLE_PAGOS}
+                    WHERE idCredito = ?
+                    AND (estado = 'pagado' OR estado = 'adelantado')
+                    ORDER BY numeroSemana DESC
+                    LIMIT 1`;
+                db.query(queryUltimaSemana, [idCredito], (err, pagosRows) => {
+                    if (err) return reject({ code: 500, message: 'Error al buscar última semana pagada' });
+
+                    const ultimaSemanaPago = pagosRows.length > 0 ? pagosRows[0] : null;
+                    const ultimaSemana = ultimaSemanaPago ? ultimaSemanaPago.numeroSemana : 0;
+
+                    // Valida que la  semana mínima
+                    const semanasTotales = credito.semanas;
+                    const semanaMinima = semanasTotales === 12 ? 10 : (semanasTotales === 16 ? 14 : 0);
+                    if (ultimaSemana < semanaMinima) {
+                        return reject({
+                            code: 400,
+                            message: `El cliente NO PUEDE RENOVAR. Ha pagado ${ultimaSemana} semanas.`
+                        });
+                    }
+
+                    const queryPagosSiguientes = `
+                        SELECT numeroSemana, cantidad, cantidadPagada, estado
+                        FROM ${TABLE_PAGOS}
+                        WHERE idCredito = ?
+                        AND numeroSemana > ?
+                        ORDER BY numeroSemana ASC`;
+                    db.query(queryPagosSiguientes, [idCredito, ultimaSemana], (err, pagosRestantes) => {
+                        if (err) return reject({ code: 500, message: 'Error al calcular semanas restantes' });
+
+                        let totalDescontarSemanas = 0;
+                        for (let pago of pagosRestantes) {
+                            if (pago.estado === 'adelantadoIncompleto') {
+                                totalDescontarSemanas += pago.cantidad - pago.cantidadPagada;
+                            } else if (pago.estado === 'pendiente') {
+                                totalDescontarSemanas += pago.cantidad;
+                            }
+                        }
+
+                        return resolve({
+                            cliente,
+                            credito,
+                            pagos: ultimaSemanaPago ? [ultimaSemanaPago] : [],
+                            semanas: ultimaSemana,
+                            totalDescontarSemanas
+                        });
+                    });
+                });
+            });
+        });
+    });
+};
+
 
 const SearchCollectors = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
@@ -266,7 +351,7 @@ async function searchModifyClient(nombreCompleto) {
         const clientDataResult = await queryAsync(queryForClientData, [formattedName]);
 
         if (clientDataResult.length === 0) {
-            throw new Error ('Cliente no encontrado.');
+            return { message: 'Cliente no encontrado' };
         }
 
         const clientDataRow = clientDataResult[0];
@@ -315,21 +400,17 @@ async function searchModifyGuarantor(nombreCompleto) {
     try {
         const formattedName = `%${nombreCompleto.trim()}%`;
 
-        //consulta SQL para obtener el id del cliente y despues buscar los avales asociados a ese ID
+        //Buscar el id del nombre del cliente que llegó
         const queryIdClient = `
             SELECT idCliente 
             FROM ${TABLE_CLIENTES} 
             WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
             LIMIT 1`
         ;
-
-        //Procesar la consulta SQL
         const idClientResult = await queryAsync(queryIdClient, [formattedName]);
-
         if (idClientResult.length === 0) {
-            throw new Error ('Cliente no encontrado.');
+            return res.status(404).json({ message: 'Cliente no encontrado' });
         }
-        
         const idClient = idClientResult[0].idCliente;
 
         //Datos de los avales y sus garantias
@@ -354,8 +435,27 @@ async function searchModifyGuarantor(nombreCompleto) {
 
             const guarantorDataResult = await queryAsync(queryForGuarantorData, [idClient]);
             
-            /**Por aqui condicionar si el cliente tiene 1 o 2 avales  */
-            
+            const guarantorData = guarantorDataResult.map((aval) => {
+                const garantiasArray = aval.garantias ? aval.garantias.split('|') : [];
+                /*return {
+                    name: aval.nombre,
+                    paternalLn: aval.apellidoPaterno,
+                    maternalLn: aval.apellidoMaterno,
+                    age: aval.edad,
+                    address: aval.domicilio,
+                    colonia: aval.colonia,
+                    city: aval.ciudad,
+                    phone: aval.telefono,
+                    nameJob: aval.trabajo,
+                    addressJob: aval.domicilioTrabajo,
+                    phoneJob: aval.telefonoTrabajo,
+                    garantias: {
+                        garantiaUno: garantiasArray[0] || '',
+                        garantiaDos: garantiasArray[1] || '',
+                        garantiaTres: garantiasArray[2] || ''
+                    }
+                }*/
+            });
         
             return {
                 guarantorDataResult
@@ -368,6 +468,7 @@ async function searchModifyGuarantor(nombreCompleto) {
 
 module.exports = {
     SearchCredit, 
+    SearchCreditRenew,
     SearchCollectors,
     searchConsult,
     searchModifyClient,
