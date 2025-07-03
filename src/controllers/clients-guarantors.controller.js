@@ -17,37 +17,49 @@ return new Promise((resolve, reject) => {
 
 //insertar los datos personales del cliente
 const insert = (clientData) => {
-    return new Promise((resolve, reject) => {
-        const query = `INSERT INTO ${TABLE_CLIENTS} (idZona, nombre, apellidoPaterno, apellidoMaterno,edad, domicilio, colonia, ciudad, telefono, clasificacion, trabajo, domicilioTrabajo, telefonoTrabajo, nombreReferencia, domicilioReferencia, telefonoReferencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        const personalData = [
-            clientData.zoneId,
-            clientData.name,
-            clientData.paternalLn,
-            clientData.maternalLn,
-            clientData.age,
-            clientData.address,
-            clientData.colonia,
-            clientData.city,                
-            clientData.phone,
-            clientData.classification,
-            clientData.nameJob,
-            clientData.addressJob,             
-            clientData.phoneJob,
-            clientData.nameReference,
-            clientData.addressReference,
-            clientData.phoneReference
-        ];
-        console.log('Datos personales: ', personalData);
-        db.query(query, personalData, (err, result) => {
-            if (err) {
-                console.log('No se agregaron los datos personales.', err);
-                reject(err);
+    return new Promise(async (resolve, reject) => {
+        try {
+            //Validar si el cliente existe
+            const searchClient = `SELECT idCliente FROM ${TABLE_CLIENTS} WHERE nombre = ? AND apellidoPaterno = ? AND apellidoMaterno = ?`;
+
+            const searchClientResult = await queryAsync(searchClient, [
+                clientData.name,
+                clientData.paternalLn,
+                clientData.maternalLn
+            ]);
+
+            if (searchClientResult.length > 0) {
+                return reject(new Error('El cliente ya existe.'));
             }
-            else {
-                console.log('Los datos personales se agregaron');
-                resolve(result);
-            }
-        });
+
+            //Insertar los datos del cliente si no existe
+            const queryToInsertClient = `INSERT INTO ${TABLE_CLIENTS} (idZona, nombre, apellidoPaterno, apellidoMaterno,edad, domicilio, colonia, ciudad, telefono, clasificacion, trabajo, domicilioTrabajo, telefonoTrabajo, nombreReferencia, domicilioReferencia, telefonoReferencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            const personalData = [
+                clientData.zoneId,
+                clientData.name,
+                clientData.paternalLn,
+                clientData.maternalLn,
+                clientData.age,
+                clientData.address,
+                clientData.colonia,
+                clientData.city,                
+                clientData.phone,
+                clientData.classification,
+                clientData.nameJob,
+                clientData.addressJob,             
+                clientData.phoneJob,
+                clientData.nameReference,
+                clientData.addressReference,
+                clientData.phoneReference
+            ];
+
+            console.log('Datos personales a guardar: ', personalData);
+
+            const insertClientResult = await queryAsync(queryToInsertClient, personalData);
+            resolve(insertClientResult);
+        } catch(error) {
+            reject(error);
+        }
     });
 };
 

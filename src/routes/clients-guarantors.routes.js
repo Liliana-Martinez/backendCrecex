@@ -8,10 +8,7 @@ router.post('/add/client', async (req, res) => {
     try {
         console.log(req.body);
         const clientData = req.body;
-        //console.log('Estructura completa de clientData:', JSON.stringify(clientData, null, 2));
-
-        //console.log('Datos del cliente recibidos: ', clientData);
-        const garantias = Object.values(clientData.garantias);
+        const garantias = clientData.garantias ? Object.values(clientData.garantias) : [];
         console.log('Garantias del cliente: ', garantias);
 
         //Insertar al cliente 
@@ -24,13 +21,17 @@ router.post('/add/client', async (req, res) => {
             await clientGuarantor.insertClientGuarantees(clientId, garantias);
             console.log('Garantias del cliente agregadas.');
         }
-        res.status(201).json({ 
+        return res.status(201).json({ 
             message: 'Cliente y garantias guardados correctamente',
             clientId: clientId
         });
     } catch (error) {
         console.log('Error en la BD: ', error);
-        res.status(500).json({ message: 'Error al guardar el cliente y garantias'});
+        if (error.message === 'El cliente ya existe.') {
+            res.status(409).json({ message: error.message });
+        } else {
+            res.status(500).json({ message: 'Error al guardar el cliente y garantias'});
+        }
     }
 });
 
