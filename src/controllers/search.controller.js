@@ -351,7 +351,7 @@ async function searchModifyClient(nombreCompleto) {
         const clientDataResult = await queryAsync(queryForClientData, [formattedName]);
 
         if (clientDataResult.length === 0) {
-            return { message: 'Cliente no encontrado' };
+            throw new Error ('Cliente no encontrado');
         }
 
         const clientDataRow = clientDataResult[0];
