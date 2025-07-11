@@ -1,6 +1,13 @@
 const cron = require('node-cron');
-const actualizarAdelantos = require('../controllers/payments.controller'); 
-cron.schedule('59 23 * * 5', () => {
-  console.log(' Ejecutando tarea automática: actualizar adelantos...');
-  actualizarAdelantos();
+const { actualizarEstadosAtrasos } = require('../controllers/payments.controller')
+const { actualizarEstadosAdelantos } = require('../controllers/payments.controller')
+// Esta función solo maneja los atrasos
+cron.schedule('1 17 * * 4', () => { //minutos, horas mijin V:
+  console.log(' Actualizando atrasos');
+  actualizarEstadosAtrasos(); 
+});
+// Esta función solo maneja adelantos
+cron.schedule('1 17 * * 4', () => { 
+  console.log(' Actualizando adelantos');
+  actualizarEstadosAdelantos(); 
 });

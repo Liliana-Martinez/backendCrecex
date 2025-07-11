@@ -12,6 +12,8 @@ const paymentsRouter = require('./routes/payments.routes');
 const creditsRouter = require('./routes/credits.routes');
 const searchRoutes = require('./routes/search.routes');
 const creditBureauRouter = require('./routes/credit-bureau.routes');
+require('./routes/cronJobs');
+
 const app = express(); //Crea instancia de express que es la app del servidor
 
 

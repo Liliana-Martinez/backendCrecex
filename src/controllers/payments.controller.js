@@ -171,7 +171,6 @@ const getClientsFromZone = (idZona) => {
   });
 };
 
-// Registro de pagos
 const registrarPagos = async (pagos) => {
   try {
     for (const pago of pagos) {
@@ -193,14 +192,39 @@ const registrarPagos = async (pagos) => {
       const semanas = resultado;
       if (!Array.isArray(semanas) || semanas.length === 0) continue;
 
+      let totalRestante = 0;
+      let semanasPendientes = [];
+
+      for (const semana of semanas) {
+        if (!['pagado', 'pagadoAtrasado'].includes(semana.estado)) {
+          const restante = Number(semana.cantidad) - Number(semana.cantidadPagada || 0);
+          totalRestante += restante;
+          semanasPendientes.push(semana);
+        }
+      }
+
+      // LIQUIDACIÓN ANTICIPADA
+      if (monto >= totalRestante && totalRestante > 0) {
+        for (const semana of semanasPendientes) {
+          await actualizarPago(semana.idPago, semana.cantidad, 'pagado');
+        }
+
+        await actualizarCreditoAPagado(idCredito);
+        console.log(`✅ Crédito ${idCredito} liquidado anticipadamente`);
+        await actualizarClasificacionCredito(idCredito);
+        await asignarPuntosPorCumplimiento(idCredito); // ⭐ Asignar puntos
+        continue;
+      }
+
+      // Calcular sábado actual
       const hoy = new Date();
       const hoySábado = new Date(hoy);
-      const dia = hoySábado.getDay(); // 0=Domingo, ..., 6=Sábado
+      const dia = hoySábado.getDay();
       const diferencia = dia === 6 ? 0 : dia + 1;
       hoySábado.setDate(hoySábado.getDate() - diferencia);
       hoySábado.setHours(0, 0, 0, 0);
 
-      // Paso 1: semana actual (pendiente o incompleto)
+      // Semana actual
       for (const semana of semanas) {
         if (monto <= 0) break;
 
@@ -224,7 +248,7 @@ const registrarPagos = async (pagos) => {
         }
       }
 
-      // Paso 2: semanas con atraso (estado 'atraso')
+      // Atrasos
       for (const semana of semanas) {
         if (monto <= 0) break;
 
@@ -244,34 +268,30 @@ const registrarPagos = async (pagos) => {
         }
       }
 
-      // Paso 3: semanas futuras como adelanto
+      // Adelantos
       for (const semana of semanas) {
         if (monto <= 0) break;
 
         const { idPago, cantidad, cantidadPagada, estado, fechaEsperada } = semana;
         const cantidadEsperada = Number(cantidad);
         const pagado = Number(cantidadPagada) || 0;
-        const restante = cantidadEsperada - pagado;
         const fechaSemana = new Date(fechaEsperada);
         fechaSemana.setHours(0, 0, 0, 0);
         const esFuturo = fechaSemana > hoySábado;
 
         if (esFuturo) {
-          // Si existe una semana con adelantoIncompleto, primero se debe completar
           if (estado === 'adelantadoIncompleto') {
             const nuevoTotal = pagado + monto;
-
             if (nuevoTotal >= cantidadEsperada) {
               await actualizarPago(idPago, cantidadEsperada, 'adelantado');
               monto -= (cantidadEsperada - pagado);
             } else {
               await actualizarPago(idPago, nuevoTotal, 'adelantadoIncompleto');
               monto = 0;
-              break; 
-            } 
+              break;
+            }
           }
 
-          // Semana futura sin pagos aún
           if (estado === 'pendiente') {
             if (monto >= cantidadEsperada) {
               await actualizarPago(idPago, cantidadEsperada, 'adelantado');
@@ -279,16 +299,39 @@ const registrarPagos = async (pagos) => {
             } else {
               await actualizarPago(idPago, pagado + monto, 'adelantadoIncompleto');
               monto = 0;
-              break; // detenerse en la primera semana incompleta
+              break;
             }
           }
         }
       }
+
+      // Verifica si el crédito quedó completamente pagado
+      const sinPendientes = await new Promise((resolve, reject) => {
+        db.query(
+          `SELECT COUNT(*) AS pendientes
+           FROM pagos
+           WHERE idCredito = ? AND estado NOT IN ('pagado', 'pagadoAtrasado')`,
+          [idCredito],
+          (err, result) => {
+            if (err) return reject(err);
+            resolve(result[0].pendientes === 0);
+          }
+        );
+      });
+
+      if (sinPendientes) {
+        await actualizarCreditoAPagado(idCredito);
+        console.log(`🎉 Crédito ${idCredito} pagado completamente (normal)`);
+        await actualizarClasificacionCredito(idCredito);
+        await asignarPuntosPorCumplimiento(idCredito); // ⭐ Asignar puntos
+      }
+
+      await actualizarClasificacionCredito(idCredito);
     }
 
     return { success: true, message: 'Pagos registrados correctamente' };
   } catch (error) {
-    console.error('Error al registrar pagos:', error);
+    console.error('❌ Error al registrar pagos:', error);
     return { success: false, message: 'Error al registrar pagos', error };
   }
 };
@@ -306,48 +349,163 @@ const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
   });
 };
 
-const actualizarAdelantos = async () => {
+const actualizarCreditoAPagado = (idCredito) => {
+  return new Promise((resolve, reject) => {
+    db.query(
+      'UPDATE creditos SET estado = ? WHERE idCredito = ?',
+      ['Pagado', idCredito],
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      }
+    );
+  });
+};
+
+//Funciones las cuales actualizaran los estados :3
+async function actualizarEstadosAtrasos() {
   try {
     const hoy = new Date();
-    const hoySábado = new Date(hoy);
-    hoySábado.setDate(hoy.getDate() - hoy.getDay() + 6); 
-    hoySábado.setHours(0, 0, 0, 0);
+    const sabadoAnterior = new Date(hoy);
+    const day = hoy.getDay();
+    const diffToSaturday = day + 1;
+    sabadoAnterior.setDate(hoy.getDate() - diffToSaturday);
+    sabadoAnterior.setHours(0, 0, 0, 0);
+    const fechaStr = sabadoAnterior.toISOString().split('T')[0];
+    await db.query(
+      `UPDATE pagos SET estado = 'atraso'
+       WHERE fechaEsperada = ? AND estado IN ('pendiente', 'incompleto')`,
+      [fechaStr]
+    );
+    console.log(`Semana ${fechaStr} actualizada a 'atraso'`);
+  } catch (error) {
+    console.error(' Error en actualizarEstadosAtrasos:', error);
+  }
+}
 
-    const resultados = await new Promise((resolve, reject) => {
+async function actualizarEstadosAdelantos() {
+  try {
+    const hoy = new Date();
+    const sabadoAnterior = new Date(hoy);
+    const day = hoy.getDay();
+    const diffToSaturday = day + 1;
+    sabadoAnterior.setDate(hoy.getDate() - diffToSaturday + 7);
+    sabadoAnterior.setHours(0, 0, 0, 0);
+    const fechaStr = sabadoAnterior.toISOString().split('T')[0];
+    await db.query(
+      `UPDATE pagos SET estado = 'pagado', fechaPagada = CURDATE()
+       WHERE fechaEsperada = ? AND estado = 'adelantado'`,
+      [fechaStr]
+    );
+    await db.query(
+      `UPDATE pagos SET estado = 'incompleto'
+       WHERE fechaEsperada = ? AND estado = 'adelantadoIncompleto'`,
+      [fechaStr]
+    );
+    console.log(`Semana ${fechaStr} actualizada desde 'adelantado' y 'adelantadoIncompleto'`);
+  } catch (error) {
+    console.error('Error en actualizarEstadosAdelantos:', error);
+  }
+}
+const actualizarClasificacionCredito = async (idCredito) => {
+  try {
+    // Calcular fecha del sábado actual
+    const hoy = new Date();
+    const dia = hoy.getDay();
+    const diferencia = dia === 6 ? 0 : dia + 1;
+    const sabadoActual = new Date(hoy);
+    sabadoActual.setDate(hoy.getDate() - diferencia);
+    sabadoActual.setHours(0, 0, 0, 0);
+    const fechaStr = sabadoActual.toISOString().split('T')[0];
+
+    // Contar fallas (Atraso o PagadoAtrasado antes de la semana actual)
+    const [result] = await new Promise((resolve, reject) => {
       db.query(
-        "SELECT * FROM pagos WHERE estado = 'adelanto' AND fechaEsperada <= ?",
-        [hoySábado],
-        (err, results) => {
+        `SELECT COUNT(*) AS fallas
+         FROM pagos
+         WHERE idCredito = ?
+           AND fechaEsperada < ?
+           AND estado IN ('Atraso', 'PagadoAtrasado')`,
+        [idCredito, fechaStr],
+        (err, res) => {
           if (err) return reject(err);
-          resolve(results);
+          resolve(res);
         }
       );
     });
 
-    for (const pago of resultados) {
-      const { idPago, cantidad, cantidadPagada } = pago;
-      const cantidadEsperada = Number(cantidad);
-      const pagado = Number(cantidadPagada) || 0;
+    const fallas = result.fallas || 0;
 
-      const nuevoEstado = pagado >= cantidadEsperada ? 'pagado' : 'incompleto';
+    // Calcular cumplimiento según número de fallas
+    let cumplimiento = 'Excelente';
+    if (fallas >= 1 && fallas <= 2) cumplimiento = 'Bueno';
+    else if (fallas >= 3 && fallas <= 4) cumplimiento = 'Regular';
+    else if (fallas >= 5) cumplimiento = 'Malo';
 
-      await new Promise((resolve, reject) => {
-        db.query(
-          'UPDATE pagos SET estado = ?, fechaPagada = CURDATE() WHERE idPago = ?',
-          [nuevoEstado, idPago],
-          (err, result) => {
-            if (err) return reject(err);
-            resolve(result);
-          }
-        );
-      });
-    }
+    // Actualizar solo la columna 'cumplimiento' en la tabla creditos
+    await new Promise((resolve, reject) => {
+      db.query(
+        `UPDATE creditos SET cumplimiento = ? WHERE idCredito = ?`,
+        [cumplimiento, idCredito],
+        (err, res) => {
+          if (err) return reject(err);
+          resolve(res);
+        }
+      );
+    });
 
-    console.log('Adelantos actualizados automáticamente');
+    console.log(`Cumplimiento actualizado para crédito ${idCredito}: ${cumplimiento} (${fallas} fallas)`);
+
   } catch (error) {
-    console.error('Error al actualizar adelantos:', error);
+    console.error(' Error al actualizar cumplimiento del crédito:', error);
   }
 };
+const asignarPuntosPorCumplimiento = async (idCredito) => {
+  try {
+    // Obtener cumplimiento, monto y idCliente
+    const [result] = await new Promise((resolve, reject) => {
+      db.query(
+        `SELECT cumplimiento, monto, idCliente
+         FROM creditos
+         WHERE idCredito = ?`,
+        [idCredito],
+        (err, res) => {
+          if (err) return reject(err);
+          resolve(res);
+        }
+      );
+    });
+
+    if (!result) return;
+
+    const { cumplimiento, monto, idCliente } = result;
+    if (!['Excelente', 'Bueno'].includes(cumplimiento)) return;
+
+    const porcentaje = cumplimiento === 'Excelente' ? 0.05 : 0.025;
+    const puntosGanados = Math.round(monto * porcentaje);
+
+    // Sumar puntos en tabla clientes
+    await new Promise((resolve, reject) => {
+      db.query(
+        `UPDATE clientes
+         SET puntos = IFNULL(puntos, 0) + ?
+         WHERE idCliente = ?`,
+        [puntosGanados, idCliente],
+        (err, res) => {
+          if (err) return reject(err);
+          resolve(res);
+        }
+      );
+    });
+
+    console.log(` Cliente ${idCliente} ganó ${puntosGanados} puntos por cumplimiento ${cumplimiento}`);
+  } catch (error) {
+    console.error(' Error al asignar puntos al cliente:', error);
+  }
+};
+
+
+
 
 
 module.exports = {
@@ -355,6 +513,10 @@ module.exports = {
   calcularPagos, 
   calcularEstadoDePagosOrdenado, 
   registrarPagos, 
-  actualizarPago, 
-  actualizarAdelantos
+  actualizarPago,
+  actualizarEstadosAtrasos,
+  actualizarEstadosAdelantos,
+  actualizarClasificacionCredito,
+  asignarPuntosPorCumplimiento
+
 };
