@@ -1,5 +1,4 @@
 const db = require('../db');
-const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
 
@@ -36,8 +35,8 @@ const createNewCredit = (req, res) => {
             if (resultCliente.length === 0) {
                 return res.status(404).json({ error: 'El cliente no existe' });
             }
-
-            const verificarCreditoExistenteQuery = `SELECT COUNT(*) AS total FROM ${TABLE_CREDITOS} WHERE idCliente = ? AND estado = 'Activo'`;
+            // MODIFICACIÓN AQUÍ: ahora verifica si el cliente ha tenido *cualquier* crédito
+            const verificarCreditoExistenteQuery = `SELECT COUNT(*) AS total FROM ${TABLE_CREDITOS} WHERE idCliente = ?`;
 
             db.query(verificarCreditoExistenteQuery, [idCliente], (errVerif, resultVerif) => {
                 if (errVerif) {
@@ -60,8 +59,6 @@ const createNewCredit = (req, res) => {
 
                 const clasificacion = resultCliente[0].clasificacion.toUpperCase();
 
-                
-
                 let validacionCorrecta = false;
                 switch (clasificacion) {
                     case 'D':
@@ -79,7 +76,6 @@ const createNewCredit = (req, res) => {
                     default:
                         return res.status(400).json({ error: true, message: 'Clasificación del cliente no válida' });
                 }
-                
 
                 if (!validacionCorrecta) {
                     return res.status(400).json({ error: true, message: 'El monto no cumple con las condiciones de la clasificación' });
@@ -94,7 +90,6 @@ const createNewCredit = (req, res) => {
                 const totalAPagar = montoNum * factor;
                 const abonoSemanal = Math.round(totalAPagar / semanasInt);
                 const efectivo = montoNum - recargosNum - atrasosNum;
-                
 
                 const query = `
                     INSERT INTO ${TABLE_CREDITOS} 
@@ -112,7 +107,7 @@ const createNewCredit = (req, res) => {
                         }
 
                         const idCredito = result.insertId;
-                        const semanasRestantes =0;
+                        const semanasRestantes = 0;
                         const descuentoSemanas = 0;
                         const abonoAnterior = 0;
                         const pagosQuery = `
@@ -123,7 +118,6 @@ const createNewCredit = (req, res) => {
                         let pagosValues = [];
                         for (let i = 0; i < semanasInt; i++) {
                             const fechaPago = new Date(primerSábadoSiguiente);
-                            
                             fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
                             const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
                             pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
@@ -157,6 +151,7 @@ const createNewCredit = (req, res) => {
         });
     }
 };
+
 
 const createRenewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, atrasos } = req.body;
