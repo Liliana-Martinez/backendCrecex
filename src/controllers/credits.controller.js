@@ -181,17 +181,18 @@ const createRenewCredit = (req, res) => {
     const factor = semanasInt === 12 ? 1.5 : 1.583;
     const abonoSemanal = Math.round((montoNum * factor) / semanasInt);
 
-    const queryCreditoActivo = `
-        SELECT idCredito, semanas AS semanasTotales, abonoSemanal
+    const queryUltimoCredito = `
+        SELECT idCredito, semanas AS semanasTotales, abonoSemanal, estado
         FROM creditos
-        WHERE idCliente = ? AND estado = 'Activo'
-        LIMIT 1
+        WHERE idCliente = ?
+        ORDER BY fechaEntrega DESC
+        LIMIT 1;
     `;
 
-    db.query(queryCreditoActivo, [idCliente], (err, result) => {
+    db.query(queryUltimoCredito, [idCliente], (err, result) => {
         if (err || result.length === 0) {
-            console.error('Error al obtener crédito activo:', err);
-            return res.status(400).json({ error: true, message: 'No se encontró un crédito activo para este cliente' });
+            console.error('Error al obtener último crédito del cliente:', err);
+            return res.status(400).json({ error: true, message: 'El cliente no tiene historial de créditos para renovar' });
         }
 
         const creditoActual = result[0];
@@ -246,6 +247,7 @@ const createRenewCredit = (req, res) => {
 
                     const semanasPagadas = pagadasRows[0].semanasPagadas;
                     const semanasMinimas = semanasInt === 12 ? 10 : 14;
+
                     if (semanasPagadas < semanasMinimas) {
                         return res.status(400).json({
                             error: true,
