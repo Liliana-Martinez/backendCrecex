@@ -174,8 +174,9 @@ const getClientsFromZone = (idZona) => {
 const registrarPagos = async (pagos) => {
   try {
     for (const pago of pagos) {
-      const { idCredito, payment } = pago;
+      const { idCredito, payment, lateFees = 0, paymentType = 'efectivo' } = pago;
       let monto = Number(payment);
+      const recargoExtra = Number(lateFees) || 0;
       if (!idCredito || isNaN(monto) || monto <= 0) continue;
 
       const resultado = await new Promise((resolve, reject) => {
@@ -206,13 +207,13 @@ const registrarPagos = async (pagos) => {
       // LIQUIDACIÓN ANTICIPADA
       if (monto >= totalRestante && totalRestante > 0) {
         for (const semana of semanasPendientes) {
-          await actualizarPago(semana.idPago, semana.cantidad, 'pagado');
+          await actualizarPago(semana.idPago, semana.cantidad, 'pagado', recargoExtra, paymentType);
         }
 
         await actualizarCreditoAPagado(idCredito);
         console.log(`✅ Crédito ${idCredito} liquidado anticipadamente`);
         await actualizarClasificacionCredito(idCredito);
-        await asignarPuntosPorCumplimiento(idCredito); // ⭐ Asignar puntos
+        await asignarPuntosPorCumplimiento(idCredito);
         continue;
       }
 
@@ -238,10 +239,10 @@ const registrarPagos = async (pagos) => {
 
         if (esSemanaActual && (estado === 'pendiente' || estado === 'incompleto')) {
           if (monto >= restante) {
-            await actualizarPago(idPago, cantidadEsperada, 'pagado');
+            await actualizarPago(idPago, cantidadEsperada, 'pagado', recargoExtra, paymentType);
             monto -= restante;
           } else {
-            await actualizarPago(idPago, pagado + monto, 'incompleto');
+            await actualizarPago(idPago, pagado + monto, 'incompleto', recargoExtra, paymentType);
             monto = 0;
           }
           break;
@@ -260,10 +261,10 @@ const registrarPagos = async (pagos) => {
         const restante = cantidadEsperada - pagado;
 
         if (monto >= restante) {
-          await actualizarPago(idPago, cantidadEsperada, 'pagadoAtrasado');
+          await actualizarPago(idPago, cantidadEsperada, 'pagadoAtrasado', recargoExtra, paymentType);
           monto -= restante;
         } else {
-          await actualizarPago(idPago, pagado + monto, 'atraso');
+          await actualizarPago(idPago, pagado + monto, 'atraso', recargoExtra, paymentType);
           monto = 0;
         }
       }
@@ -283,10 +284,10 @@ const registrarPagos = async (pagos) => {
           if (estado === 'adelantadoIncompleto') {
             const nuevoTotal = pagado + monto;
             if (nuevoTotal >= cantidadEsperada) {
-              await actualizarPago(idPago, cantidadEsperada, 'adelantado');
+              await actualizarPago(idPago, cantidadEsperada, 'adelantado', recargoExtra, paymentType);
               monto -= (cantidadEsperada - pagado);
             } else {
-              await actualizarPago(idPago, nuevoTotal, 'adelantadoIncompleto');
+              await actualizarPago(idPago, nuevoTotal, 'adelantadoIncompleto', recargoExtra, paymentType);
               monto = 0;
               break;
             }
@@ -294,10 +295,10 @@ const registrarPagos = async (pagos) => {
 
           if (estado === 'pendiente') {
             if (monto >= cantidadEsperada) {
-              await actualizarPago(idPago, cantidadEsperada, 'adelantado');
+              await actualizarPago(idPago, cantidadEsperada, 'adelantado', recargoExtra, paymentType);
               monto -= cantidadEsperada;
             } else {
-              await actualizarPago(idPago, pagado + monto, 'adelantadoIncompleto');
+              await actualizarPago(idPago, pagado + monto, 'adelantadoIncompleto', recargoExtra, paymentType);
               monto = 0;
               break;
             }
@@ -323,7 +324,7 @@ const registrarPagos = async (pagos) => {
         await actualizarCreditoAPagado(idCredito);
         console.log(`🎉 Crédito ${idCredito} pagado completamente (normal)`);
         await actualizarClasificacionCredito(idCredito);
-        await asignarPuntosPorCumplimiento(idCredito); // ⭐ Asignar puntos
+        await asignarPuntosPorCumplimiento(idCredito);
       }
 
       await actualizarClasificacionCredito(idCredito);
@@ -336,18 +337,35 @@ const registrarPagos = async (pagos) => {
   }
 };
 
-const actualizarPago = (idPago, cantidadPagada, nuevoEstado) => {
+const actualizarPago = (idPago, cantidadPagada, nuevoEstado, recargoExtra = 0, tipoPago = 'efectivo') => {
   return new Promise((resolve, reject) => {
     db.query(
-      'UPDATE pagos SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = ? WHERE idPago = ?',
-      [cantidadPagada, nuevoEstado, idPago],
-      (err, result) => {
+      'SELECT recargos FROM pagos WHERE idPago = ?',
+      [idPago],
+      (err, rows) => {
         if (err) return reject(err);
-        resolve(result);
+        const recargoActual = Number(rows[0]?.recargos || 0);
+        const nuevoRecargo = recargoActual + recargoExtra;
+
+        db.query(
+          `UPDATE pagos 
+           SET cantidadPagada = ?, 
+               fechaPagada = CURDATE(), 
+               estado = ?, 
+               recargos = ?, 
+               tipoPago = ? 
+           WHERE idPago = ?`,
+          [cantidadPagada, nuevoEstado, nuevoRecargo, tipoPago, idPago],
+          (err2, result) => {
+            if (err2) return reject(err2);
+            resolve(result);
+          }
+        );
       }
     );
   });
 };
+
 
 const actualizarCreditoAPagado = (idCredito) => {
   return new Promise((resolve, reject) => {

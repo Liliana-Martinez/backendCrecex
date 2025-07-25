@@ -333,58 +333,75 @@ const createRenewCredit = (req, res) => {
 
                             const idCredito = result2.insertId;
 
-                            const pagosQuery = `INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado) VALUES `;
-                            let pagosValues = [];
+                            // 🔗 Generar referencia y guardar
+                            const fechaHoy = new Date();
+                            const yyyy = fechaHoy.getFullYear();
+                            const mm = String(fechaHoy.getMonth() + 1).padStart(2, '0');
+                            const dd = String(fechaHoy.getDate()).padStart(2, '0');
+                            const fechaStr = `${yyyy}${mm}${dd}`;
+                            const referencia = `${fechaStr}${idCliente}${idCredito}`;
 
-                            for (let i = 0; i < semanasInt; i++) {
-                                const fechaPago = new Date(primerSábadoSiguiente);
-                                fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
-                                const fechaFormateada = fechaPago.toISOString().split('T')[0];
-                                pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaFormateada}', NULL, 'Pendiente')`);
-                            }
-
-                            db.query(pagosQuery + pagosValues.join(', '), (err3) => {
-                                if (err3) {
-                                    console.error('Error al registrar pagos:', err3);
-                                    return res.status(500).json({ error: true, message: 'Error al guardar los pagos del nuevo crédito' });
+                            const updateReferenciaQuery = `UPDATE creditos SET referencia = ? WHERE idCredito = ?`;
+                            db.query(updateReferenciaQuery, [referencia, idCredito], (errRef) => {
+                                if (errRef) {
+                                    console.error('Error al guardar referencia:', errRef);
+                                    return res.status(500).json({ error: true, message: 'Error al guardar la referencia del crédito' });
                                 }
 
-                                const updatePagosAnteriores = `
-                                    UPDATE pagos
-                                    SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = 'Pagado'
-                                    WHERE idCredito = ? AND estado = 'Pendiente'
-                                    ORDER BY numeroSemana
-                                    LIMIT ?
-                                `;
+                                const pagosQuery = `INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado) VALUES `;
+                                let pagosValues = [];
 
-                                db.query(updatePagosAnteriores, [abonoAnterior, idCreditoAnterior, semanasRestantes], (err4) => {
-                                    if (err4) {
-                                        console.error('Error al actualizar pagos anteriores:', err4);
-                                        return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudieron marcar como pagadas las semanas anteriores' });
+                                for (let i = 0; i < semanasInt; i++) {
+                                    const fechaPago = new Date(primerSábadoSiguiente);
+                                    fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
+                                    const fechaFormateada = fechaPago.toISOString().split('T')[0];
+                                    pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaFormateada}', NULL, 'Pendiente')`);
+                                }
+
+                                db.query(pagosQuery + pagosValues.join(', '), (err3) => {
+                                    if (err3) {
+                                        console.error('Error al registrar pagos:', err3);
+                                        return res.status(500).json({ error: true, message: 'Error al guardar los pagos del nuevo crédito' });
                                     }
 
-                                    const updateCreditoAnterior = `UPDATE creditos SET estado = 'Pagado' WHERE idCredito = ?`;
-                                    db.query(updateCreditoAnterior, [idCreditoAnterior], (err5) => {
-                                        if (err5) {
-                                            console.error('Error al actualizar estado del crédito anterior:', err5);
-                                            return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudo actualizar el estado del crédito anterior' });
+                                    const updatePagosAnteriores = `
+                                        UPDATE pagos
+                                        SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = 'Pagado'
+                                        WHERE idCredito = ? AND estado = 'Pendiente'
+                                        ORDER BY numeroSemana
+                                        LIMIT ?
+                                    `;
+
+                                    db.query(updatePagosAnteriores, [abonoAnterior, idCreditoAnterior, semanasRestantes], (err4) => {
+                                        if (err4) {
+                                            console.error('Error al actualizar pagos anteriores:', err4);
+                                            return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudieron marcar como pagadas las semanas anteriores' });
                                         }
 
-                                        respuestaImprimir(idCredito)
-                                            .then((respuesta) => {
-                                                return res.status(201).json({
-                                                    abonoSemanal,
-                                                    efectivo,
-                                                    semanasRestantes,
-                                                    abonoAnterior,
-                                                    descuentoSemanas,
-                                                    imprimir: respuesta
+                                        const updateCreditoAnterior = `UPDATE creditos SET estado = 'Pagado' WHERE idCredito = ?`;
+                                        db.query(updateCreditoAnterior, [idCreditoAnterior], (err5) => {
+                                            if (err5) {
+                                                console.error('Error al actualizar estado del crédito anterior:', err5);
+                                                return res.status(500).json({ error: true, message: 'Crédito creado, pero no se pudo actualizar el estado del crédito anterior' });
+                                            }
+
+                                            respuestaImprimir(idCredito)
+                                                .then((respuesta) => {
+                                                    return res.status(201).json({
+                                                        abonoSemanal,
+                                                        efectivo,
+                                                        semanasRestantes,
+                                                        abonoAnterior,
+                                                        descuentoSemanas,
+                                                        referencia,
+                                                        imprimir: respuesta
+                                                    });
+                                                })
+                                                .catch((error) => {
+                                                    console.error('Error al construir respuesta para imprimir:', error);
+                                                    return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
                                                 });
-                                            })
-                                            .catch((error) => {
-                                                console.error('Error al construir respuesta para imprimir:', error);
-                                                return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
-                                            });
+                                        });
                                     });
                                 });
                             });
@@ -395,7 +412,6 @@ const createRenewCredit = (req, res) => {
         });
     });
 };
-
 const createAdditionalCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
     if (!idCliente || !monto || !semanas || !horarioEntrega) {
@@ -482,39 +498,55 @@ const createAdditionalCredit = (req, res) => {
                     return res.status(500).json({ error: true, message: 'Error al guardar el crédito adicional' });
                 }
                 const idCredito = resultInsert.insertId;
-                const semanasRestantes =0;
-                const descuentoSemanas = 0;
-                const abonoAnterior = 0;
-                const pagosQuery = `
-                    INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado) VALUES`;
 
-                let pagosValues = [];
-                for (let i = 0; i < semanasInt; i++) {
-                    const fechaPago = new Date(primerSábadoSiguiente);
-                    fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
-                    const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
-                    pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
-                }
-                db.query(pagosQuery + pagosValues.join(', '), (errPagos) => {
-                    if (errPagos) {
-                        console.error('Error al registrar pagos del crédito adicional:', errPagos);
-                        return res.status(500).json({ error: 'Error al guardar los pagos del crédito adicional' });
+                // Crear referencia con formato: YYYYMMDD + idCliente + idCredito
+                const yyyy = hoy.getFullYear();
+                const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+                const dd = String(hoy.getDate()).padStart(2, '0');
+                const referencia = `${yyyy}${mm}${dd}${idCliente}${idCredito}`;
+
+                // Guardar referencia en la fila del crédito
+                const updateReferencia = `UPDATE creditos SET referencia = ? WHERE idCredito = ?`;
+                db.query(updateReferencia, [referencia, idCredito], (errUpdateRef) => {
+                    if (errUpdateRef) {
+                        console.error('Error al guardar referencia del crédito adicional:', errUpdateRef);
+                        return res.status(500).json({ error: true, message: 'Error al guardar la referencia del crédito' });
                     }
-                    respuestaImprimir(idCredito)
-                        .then((respuesta) => {
-                            return res.status(201).json({
-                                abonoSemanal,
-                                efectivo,
-                                semanasRestantes,
-                                abonoAnterior,
-                                descuentoSemanas,
-                                imprimir: respuesta
+
+                    const semanasRestantes = 0;
+                    const descuentoSemanas = 0;
+                    const abonoAnterior = 0;
+                    const pagosQuery = `
+                        INSERT INTO pagos (idCredito, numeroSemana, cantidad, fechaEsperada, cantidadPagada, estado) VALUES`;
+
+                    let pagosValues = [];
+                    for (let i = 0; i < semanasInt; i++) {
+                        const fechaPago = new Date(primerSábadoSiguiente);
+                        fechaPago.setDate(primerSábadoSiguiente.getDate() + (i + 1) * 7);
+                        const fechaPagoFormateada = fechaPago.toISOString().split('T')[0];
+                        pagosValues.push(`(${idCredito}, ${i + 1}, ${abonoSemanal}, '${fechaPagoFormateada}', NULL, 'Pendiente')`);
+                    }
+                    db.query(pagosQuery + pagosValues.join(', '), (errPagos) => {
+                        if (errPagos) {
+                            console.error('Error al registrar pagos del crédito adicional:', errPagos);
+                            return res.status(500).json({ error: 'Error al guardar los pagos del crédito adicional' });
+                        }
+                        respuestaImprimir(idCredito)
+                            .then((respuesta) => {
+                                return res.status(201).json({
+                                    abonoSemanal,
+                                    efectivo,
+                                    semanasRestantes,
+                                    abonoAnterior,
+                                    descuentoSemanas,
+                                    imprimir: respuesta
+                                });
+                            })
+                            .catch((error) => {
+                                console.error('Error al construir respuesta para imprimir:', error);
+                                return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
                             });
-                        })
-                        .catch((error) => {
-                            console.error('Error al construir respuesta para imprimir:', error);
-                            return res.status(500).json({ error: true, message: 'Error al construir los datos para imprimir' });
-                        });
+                    });
                 });
             });
         });
@@ -526,11 +558,11 @@ async function respuestaImprimir(idCredito) {
         const query = `
             SELECT 
                 c.tipoCredito, c.idCredito, c.monto, c.fechaEntrega, c.abonoSemanal, c.semanas AS numeroSemana,
-                c.horarioEntrega, c.recargos, c.atrasos, c.efectivo,
+                c.horarioEntrega, c.recargos, c.atrasos, c.efectivo, c.referencia,
                 cl.idCliente, cl.nombre, cl.apellidoPaterno, cl.apellidoMaterno,
                 z.idZona, z.promotora, z.codigoZona,
                 p.fechaEsperada
-                FROM creditos c
+            FROM creditos c
             JOIN clientes cl ON cl.idCliente = c.idCliente
             JOIN zonas z ON cl.idZona = z.idZona
             LEFT JOIN pagos p ON p.idCredito = c.idCredito
@@ -558,7 +590,8 @@ async function respuestaImprimir(idCredito) {
                     horarioEntrega: r.horarioEntrega,
                     recargos: r.recargos,
                     atrasos: r.atrasos,
-                    efectivo: r.efectivo
+                    efectivo: r.efectivo,
+                    referencia: r.referencia
                 },
                 pagos: {
                     fechaEsperada: r.fechaEsperada
@@ -572,6 +605,7 @@ async function respuestaImprimir(idCredito) {
         });
     });
 }
+
 module.exports = {
     createNewCredit,
     createRenewCredit,
