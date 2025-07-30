@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 require('./db');
-//require('../src/routes/cronJobs'); 
+require('../src/routes/cronJobs'); 
 
 
 const authRoutes = require('./routes/auth.routes');
