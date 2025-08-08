@@ -8,13 +8,13 @@ cron.schedule('1 17 * * 4', () => { //minutos, horas mijin V: JUEVES A LAS 5:00P
   actualizarEstadosAtrasos(); 
 });
 // maneja adelantos
-cron.schedule('52 11 * * 3', () => { //VIERNES 1:00PM
+cron.schedule('12 11 * * 2', () => { //VIERNES 1:00PM
   console.log(' Actualizando adelantos');
   actualizarEstadosAdelantos(); 
 });
 
 //maneja estados pendientes a falla lunes a la 1:00PM
-cron.schedule('33 12 * * 3', () => {
+cron.schedule('13 11 * * 2', () => {
   console.log('⏰ Ejecutando tarea automática: actualizar estados a "falla"');
   actualizarEstadosFalla();
 });

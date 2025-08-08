@@ -68,7 +68,6 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
 
-  // Último sábado 
   const getLastSaturday = () => {
     const today = new Date();
     const day = today.getDay();
@@ -76,9 +75,8 @@ const getClientsFromZone = (idZona) => {
     const lastSaturday = new Date(today);
     lastSaturday.setDate(today.getDate() - diff);
     return lastSaturday.toISOString().split('T')[0];
-  }; 
+  };
 
-  // Próximo sábado
   const getNextSaturday = () => {
     const today = new Date();
     const day = today.getDay();
@@ -111,7 +109,9 @@ const getClientsFromZone = (idZona) => {
           WHERE creditos.idCliente = c.idCliente
             AND creditos.estado IN ('Activo', 'Pagado', 'Adicional', 'Vencido')
         ) AS numeroCreditos,
-        p.numeroSemana
+        p.numeroSemana,
+        p.cantidadEfectivo,
+        p.tipoPago -- ✅ lo necesitamos para condicionar el valor
       FROM clientes AS c
       JOIN creditos AS cr ON c.idCliente = cr.idCliente
       LEFT JOIN pagos AS p 
@@ -126,14 +126,13 @@ const getClientsFromZone = (idZona) => {
       if (error) return reject(error);
       if (!results || results.length === 0) return resolve(null);
 
-      // Tomamos datos generales desde el primer resultado
       const { codigoZona, promotora } = results[0];
 
       try {
         const clientes = await Promise.all(results.map(cliente => {
           return new Promise((res, rej) => {
             const pagosQuery = `
-              SELECT cantidad, cantidadPagada, fechaEsperada, fechaPagada, estado
+              SELECT cantidad, cantidadPagada, cantidadEfectivo, tipoPago, fechaEsperada, fechaPagada, estado
               FROM pagos
               WHERE idCredito = ?
               ORDER BY fechaEsperada
@@ -141,8 +140,16 @@ const getClientsFromZone = (idZona) => {
             db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
               if (err) return rej(err);
               const { atraso, adelanto, falla } = calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
+
+              // Aplicamos la condición para cantidadEfectivo
+              let cantidadEfectivo = null;
+              if (cliente.tipoPago && cliente.tipoPago.toLowerCase() === 'efectivo') {
+                cantidadEfectivo = cliente.cantidadEfectivo;
+              }
+
               res({
                 ...cliente,
+                cantidadEfectivo, // solo si tipoPago === 'efectivo'
                 atraso,
                 adelanto,
                 falla
@@ -172,8 +179,11 @@ const registrarPagos = async (pagos) => {
       const recargoExtra = Number(lateFees) || 0;
       if (!idCredito || isNaN(monto) || monto <= 0) continue;
 
-      // Obtener todas las semanas de pago del crédito
-      const resultado = await new Promise((resolve, reject) => {
+      const totalRecibidoHoy = monto + recargoExtra; 
+      let cantidadEfectivoRegistrado = false;
+
+      // 📌 Obtener todas las semanas del crédito
+      const semanas = await new Promise((resolve, reject) => {
         db.query(
           'SELECT * FROM pagos WHERE idCredito = ? ORDER BY numeroSemana ASC',
           [idCredito],
@@ -184,12 +194,11 @@ const registrarPagos = async (pagos) => {
         );
       });
 
-      const semanas = resultado;
       if (!Array.isArray(semanas) || semanas.length === 0) continue;
 
+      // 📌 Calcular total restante y semanas pendientes
       let totalRestante = 0;
-      let semanasPendientes = [];
-
+      const semanasPendientes = [];
       for (const semana of semanas) {
         if (!['pagado', 'pagadoAtrasado'].includes(semana.estado)) {
           const restante = Number(semana.cantidad) - Number(semana.cantidadPagada || 0);
@@ -198,7 +207,7 @@ const registrarPagos = async (pagos) => {
         }
       }
 
-      // LIQUIDACIÓN ANTICIPADA
+      // 📌 Si el pago liquida todo el crédito
       if (monto >= totalRestante && totalRestante > 0) {
         for (const semana of semanasPendientes) {
           await actualizarPago(
@@ -207,46 +216,69 @@ const registrarPagos = async (pagos) => {
             'pagado',
             recargoExtra,
             paymentType,
-            pago.payment
+            cantidadEfectivoRegistrado ? 0 : totalRecibidoHoy, // 💰 registrar efectivo una sola vez
+            !cantidadEfectivoRegistrado
           );
+          cantidadEfectivoRegistrado = true;
         }
 
         await actualizarCreditoAPagado(idCredito);
-        console.log(`✅ Crédito ${idCredito} liquidado anticipadamente`);
         await actualizarClasificacionCredito(idCredito);
         await asignarPuntosPorCumplimiento(idCredito);
         continue;
       }
 
-      // Calcular sábado actual
+      // 📌 Calcular fecha del sábado de la semana actual
       const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
       const hoySabado = new Date(hoy);
       const dia = hoySabado.getDay();
       const diferencia = dia === 6 ? 0 : dia + 1;
       hoySabado.setDate(hoySabado.getDate() - diferencia);
       hoySabado.setHours(0, 0, 0, 0);
 
-      // Semana actual
+      // 📌 Registrar efectivo en la semana actual, aunque no tenga deuda
+      const semanaActual = semanas.find(s => {
+        const fechaSemana = new Date(s.fechaEsperada);
+        fechaSemana.setHours(0, 0, 0, 0);
+        return fechaSemana.getTime() === hoySabado.getTime();
+      });
+
+      if (semanaActual && !cantidadEfectivoRegistrado && paymentType === 'efectivo') {
+        await actualizarPago(
+          semanaActual.idPago,
+          semanaActual.cantidadPagada || 0, // no modificar pagado aquí
+          semanaActual.estado,
+          recargoExtra,
+          paymentType,
+          totalRecibidoHoy, // 💰 total recibido en efectivo
+          true
+        );
+        cantidadEfectivoRegistrado = true;
+      }
+
+      // 📌 Pagar semana actual (si tiene deuda)
       for (const semana of semanas) {
         if (monto <= 0) break;
-
         const { idPago, cantidad, cantidadPagada, estado, fechaEsperada } = semana;
+
         const cantidadEsperada = Number(cantidad);
         const pagado = Number(cantidadPagada) || 0;
         const restante = cantidadEsperada - pagado;
         const fechaSemana = new Date(fechaEsperada);
         fechaSemana.setHours(0, 0, 0, 0);
-        const esSemanaActual = fechaSemana.toDateString() === hoySabado.toDateString();
+        const esSemanaActual = fechaSemana.getTime() === hoySabado.getTime();
 
-        if (esSemanaActual && (estado === 'falla' || estado === 'incompleto')) {
+        if (esSemanaActual && ['falla', 'incompleto', 'pendiente'].includes(estado)) {
           if (monto >= restante) {
             await actualizarPago(
               idPago,
               cantidadEsperada,
-              'pagadoAtrasado',
+              'pagado',
               recargoExtra,
               paymentType,
-              pago.payment
+              0,
+              false
             );
             monto -= restante;
           } else {
@@ -256,7 +288,8 @@ const registrarPagos = async (pagos) => {
               'incompleto',
               recargoExtra,
               paymentType,
-              pago.payment
+              0,
+              false
             );
             monto = 0;
           }
@@ -264,97 +297,95 @@ const registrarPagos = async (pagos) => {
         }
       }
 
-      // Atrasos
+      // 📌 Pagar atrasos
       for (const semana of semanas) {
         if (monto <= 0) break;
+        if (semana.estado !== 'atraso') continue;
 
-        const { idPago, cantidad, cantidadPagada, estado } = semana;
-        if (estado !== 'atraso') continue;
-
-        const cantidadEsperada = Number(cantidad);
-        const pagado = Number(cantidadPagada) || 0;
-        const restante = cantidadEsperada - pagado;
-
+        const restante = Number(semana.cantidad) - Number(semana.cantidadPagada || 0);
         if (monto >= restante) {
           await actualizarPago(
-            idPago,
-            cantidadEsperada,
+            semana.idPago,
+            semana.cantidad,
             'pagadoAtrasado',
             recargoExtra,
             paymentType,
-            pago.payment
+            0,
+            false
           );
           monto -= restante;
         } else {
           await actualizarPago(
-            idPago,
-            pagado + monto,
+            semana.idPago,
+            Number(semana.cantidadPagada) + monto,
             'atraso',
             recargoExtra,
             paymentType,
-            pago.payment
+            0,
+            false
           );
           monto = 0;
         }
       }
 
-      // Adelantos
+      // 📌 Adelantos
       for (const semana of semanas) {
         if (monto <= 0) break;
-
-        const { idPago, cantidad, cantidadPagada, estado, fechaEsperada } = semana;
-        const cantidadEsperada = Number(cantidad);
-        const pagado = Number(cantidadPagada) || 0;
-        const fechaSemana = new Date(fechaEsperada);
+        const fechaSemana = new Date(semana.fechaEsperada);
         fechaSemana.setHours(0, 0, 0, 0);
         const esFuturo = fechaSemana > hoySabado;
 
         if (esFuturo) {
-          if (estado === 'adelantadoIncompleto') {
+          const pagado = Number(semana.cantidadPagada) || 0;
+          const cantidadEsperada = Number(semana.cantidad);
+          if (semana.estado === 'adelantadoIncompleto') {
             const nuevoTotal = pagado + monto;
             if (nuevoTotal >= cantidadEsperada) {
               await actualizarPago(
-                idPago,
+                semana.idPago,
                 cantidadEsperada,
                 'adelantado',
                 recargoExtra,
                 paymentType,
-                pago.payment
+                0,
+                false
               );
               monto -= cantidadEsperada - pagado;
             } else {
               await actualizarPago(
-                idPago,
+                semana.idPago,
                 nuevoTotal,
                 'adelantadoIncompleto',
                 recargoExtra,
                 paymentType,
-                pago.payment
+                0,
+                false
               );
               monto = 0;
               break;
             }
           }
-
-          if (estado === 'pendiente') {
+          if (semana.estado === 'pendiente') {
             if (monto >= cantidadEsperada) {
               await actualizarPago(
-                idPago,
+                semana.idPago,
                 cantidadEsperada,
                 'adelantado',
                 recargoExtra,
                 paymentType,
-                pago.payment
+                0,
+                false
               );
               monto -= cantidadEsperada;
             } else {
               await actualizarPago(
-                idPago,
+                semana.idPago,
                 pagado + monto,
                 'adelantadoIncompleto',
                 recargoExtra,
                 paymentType,
-                pago.payment
+                0,
+                false
               );
               monto = 0;
               break;
@@ -363,7 +394,7 @@ const registrarPagos = async (pagos) => {
         }
       }
 
-      // Verifica si el crédito quedó completamente pagado
+      // 📌 Verificar si el crédito quedó pagado
       const sinPendientes = await new Promise((resolve, reject) => {
         db.query(
           `SELECT COUNT(*) AS pendientes
@@ -379,12 +410,9 @@ const registrarPagos = async (pagos) => {
 
       if (sinPendientes) {
         await actualizarCreditoAPagado(idCredito);
-        console.log(`🎉 Crédito ${idCredito} pagado completamente (normal)`);
         await actualizarClasificacionCredito(idCredito);
         await asignarPuntosPorCumplimiento(idCredito);
       }
-
-      await actualizarClasificacionCredito(idCredito);
     }
 
     return { success: true, message: 'Pagos registrados correctamente' };
@@ -394,24 +422,27 @@ const registrarPagos = async (pagos) => {
   }
 };
 
+
 const actualizarPago = (
   idPago,
   cantidadPagada,
   nuevoEstado,
   recargoExtra = 0,
   tipoPago = 'efectivo',
-  pagoOriginal = 0
+  cantidadEfectivoRecibido = 0,
+  esSemanaActual = false
 ) => {
   return new Promise((resolve, reject) => {
-    db.query('SELECT recargos FROM pagos WHERE idPago = ?', [idPago], (err, rows) => {
+    db.query('SELECT recargos, cantidadEfectivo FROM pagos WHERE idPago = ?', [idPago], (err, rows) => {
       if (err) return reject(err);
+
       const recargoActual = Number(rows[0]?.recargos || 0);
+      const cantidadEfectivoActual = Number(rows[0]?.cantidadEfectivo || 0);
       const nuevoRecargo = recargoActual + recargoExtra;
 
-      // Calcular cantidadEfectivo según el tipo de pago
-      let cantidadEfectivo = 0;
-      if (tipoPago === 'efectivo') {
-        cantidadEfectivo = Number(pagoOriginal) + nuevoRecargo;
+      let nuevaCantidadEfectivo = cantidadEfectivoActual;
+      if (tipoPago === 'efectivo' && esSemanaActual) {
+        nuevaCantidadEfectivo += Number(cantidadEfectivoRecibido); // ✅ Acumula en semana actual
       }
 
       db.query(
@@ -423,7 +454,7 @@ const actualizarPago = (
              recargos = ?, 
              tipoPago = ? 
          WHERE idPago = ?`,
-        [cantidadPagada, cantidadEfectivo, nuevoEstado, nuevoRecargo, tipoPago, idPago],
+        [cantidadPagada, nuevaCantidadEfectivo, nuevoEstado, nuevoRecargo, tipoPago, idPago],
         (err2, result) => {
           if (err2) return reject(err2);
           resolve(result);
@@ -432,7 +463,6 @@ const actualizarPago = (
     });
   });
 };
-
 
 const actualizarCreditoAPagado = (idCredito) => {
   return new Promise((resolve, reject) => {
