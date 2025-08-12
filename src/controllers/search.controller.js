@@ -15,7 +15,7 @@ function queryAsync(sql, params = []) {
 const SearchCredit = (nombreCompleto) => {
     return new Promise((resolve, reject) => {
     const queryCliente = `
-      SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion, tipoCliente
+      SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno, telefono, domicilio, clasificacion
       FROM ${TABLE_CLIENTES}
       WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?`;
     const formattedNombre = `%${nombreCompleto.trim()}%`;
@@ -27,7 +27,7 @@ const SearchCredit = (nombreCompleto) => {
         const cliente = clienteRows[0];
         const idCliente = cliente.idCliente;
         const queryCredito = `
-            SELECT idCredito, monto, fechaEntrega, semanas, abonoSemanal
+            SELECT idCredito, monto, fechaEntrega, semanas, abonoSemanal, cumplimiento
             FROM ${TABLE_CREDITOS}
             WHERE idCliente = ? AND estado = 'activo'
             LIMIT 1`;

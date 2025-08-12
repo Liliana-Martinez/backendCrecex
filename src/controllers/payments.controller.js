@@ -39,25 +39,18 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
     const pagado = Number(pago.cantidadPagada ?? 0);
     const estado = (pago.estado ?? '').toLowerCase();
     const fechaEsperada = new Date(pago.fechaEsperada);
-    const fechaPagada = pago.fechaPagada && pago.fechaPagada !== '0000-00-00'
-      ? new Date(pago.fechaPagada)
-      : null;
 
-    const mismaSemana = fechaEsperada.toISOString().slice(0, 10) === ref.toISOString().slice(0, 10);
-
-    // Si tiene el estado atraso, te hace resta de lo que pago y lo que debio haber pagadodo
+    // Atraso: pagos anteriores no cubiertos completamente
     if (estado === 'atraso') {
       atraso += cantidad - pagado;
     }
 
-    // Va  atener falla solo si los estados con pendientes o incompleto
-    if (mismaSemana) {
-      if (estado === 'pendiente' || estado === 'incompleto') {
-        falla += cantidad - pagado;
-      }
+    // Falla: se suman solo los pagos con estado 'falla'
+    if (estado === 'falla'|| estado === 'incompleto') {
+      falla += cantidad - pagado;
     }
 
-    // Aqui solo se toman las semanas futuras 
+    // Adelanto: solo pagos futuros con adelanto
     if (fechaEsperada > ref) {
       if (estado === 'adelantado' || estado === 'adelantadoincompleto') {
         adelantoDisponible += pagado;
@@ -71,6 +64,7 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
     falla
   };
 }
+
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
@@ -237,9 +231,9 @@ const registrarPagos = async (pagos) => {
         fechaSemana.setHours(0, 0, 0, 0);
         const esSemanaActual = fechaSemana.toDateString() === hoySábado.toDateString();
 
-        if (esSemanaActual && (estado === 'pendiente' || estado === 'incompleto')) {
+        if (esSemanaActual && (estado === 'falla' || estado === 'incompleto')) {
           if (monto >= restante) {
-            await actualizarPago(idPago, cantidadEsperada, 'pagado', recargoExtra, paymentType);
+            await actualizarPago(idPago, cantidadEsperada, 'pagadoAtrasado', recargoExtra, paymentType);
             monto -= restante;
           } else {
             await actualizarPago(idPago, pagado + monto, 'incompleto', recargoExtra, paymentType);
@@ -392,7 +386,7 @@ async function actualizarEstadosAtrasos() {
     const fechaStr = sabadoAnterior.toISOString().split('T')[0];
     await db.query(
       `UPDATE pagos SET estado = 'atraso'
-       WHERE fechaEsperada = ? AND estado IN ('pendiente', 'incompleto')`,
+       WHERE fechaEsperada = ? AND estado IN ('falla', 'incompleto')`,
       [fechaStr]
     );
     console.log(`Semana ${fechaStr} actualizada a 'atraso'`);
@@ -427,7 +421,6 @@ async function actualizarEstadosAdelantos() {
 }
 const actualizarClasificacionCredito = async (idCredito) => {
   try {
-    // Calcular fecha del sábado actual
     const hoy = new Date();
     const dia = hoy.getDay();
     const diferencia = dia === 6 ? 0 : dia + 1;
@@ -436,31 +429,31 @@ const actualizarClasificacionCredito = async (idCredito) => {
     sabadoActual.setHours(0, 0, 0, 0);
     const fechaStr = sabadoActual.toISOString().split('T')[0];
 
-    // Contar fallas (Atraso o PagadoAtrasado antes de la semana actual)
+    console.log('Fecha para conteo de fallas:', fechaStr);
+
     const [result] = await new Promise((resolve, reject) => {
       db.query(
         `SELECT COUNT(*) AS fallas
          FROM pagos
          WHERE idCredito = ?
-           AND fechaEsperada < ?
-           AND estado IN ('Atraso', 'PagadoAtrasado')`,
+           AND fechaEsperada <= ?
+           AND LOWER(estado) IN ('atraso', 'pagadoatrasado')`,
         [idCredito, fechaStr],
         (err, res) => {
           if (err) return reject(err);
+          console.log('Consulta fallas:', res);
           resolve(res);
         }
       );
     });
 
-    const fallas = result.fallas || 0;
+    const fallas = result?.fallas || 0;
 
-    // Calcular cumplimiento según número de fallas
     let cumplimiento = 'Excelente';
     if (fallas >= 1 && fallas <= 2) cumplimiento = 'Bueno';
     else if (fallas >= 3 && fallas <= 4) cumplimiento = 'Regular';
     else if (fallas >= 5) cumplimiento = 'Malo';
 
-    // Actualizar solo la columna 'cumplimiento' en la tabla creditos
     await new Promise((resolve, reject) => {
       db.query(
         `UPDATE creditos SET cumplimiento = ? WHERE idCredito = ?`,
@@ -475,9 +468,10 @@ const actualizarClasificacionCredito = async (idCredito) => {
     console.log(`Cumplimiento actualizado para crédito ${idCredito}: ${cumplimiento} (${fallas} fallas)`);
 
   } catch (error) {
-    console.error(' Error al actualizar cumplimiento del crédito:', error);
+    console.error('Error al actualizar cumplimiento del crédito:', error);
   }
 };
+
 const asignarPuntosPorCumplimiento = async (idCredito) => {
   try {
     // Obtener cumplimiento, monto y idCliente
@@ -498,7 +492,6 @@ const asignarPuntosPorCumplimiento = async (idCredito) => {
 
     const { cumplimiento, monto, idCliente } = result;
     if (!['Excelente', 'Bueno'].includes(cumplimiento)) return;
-
     const porcentaje = cumplimiento === 'Excelente' ? 0.05 : 0.025;
     const puntosGanados = Math.round(monto * porcentaje);
 
@@ -521,6 +514,36 @@ const asignarPuntosPorCumplimiento = async (idCredito) => {
     console.error(' Error al asignar puntos al cliente:', error);
   }
 };
+async function actualizarEstadosFalla() {
+  try {
+    const hoy = new Date();
+    const day = hoy.getDay(); // 0 = domingo, ..., 6 = sábado
+    const diffToSaturday = day === 6 ? 0 : day + 1;
+    const sabadoActual = new Date(hoy);
+    sabadoActual.setDate(hoy.getDate() - diffToSaturday);
+    sabadoActual.setHours(0, 0, 0, 0);
+
+    const fechaStr = sabadoActual.toISOString().split('T')[0];
+
+    // Ejecutar el query y mostrar resultado
+    db.query(
+      `UPDATE pagos SET estado = 'falla'
+       WHERE fechaEsperada = ? AND estado = 'pendiente'`,
+      [fechaStr],
+      (err, result) => {
+        if (err) {
+          console.error('❌ Error al actualizar pagos:', err);
+        } else {
+          console.log('✅ Pagos actualizados a "falla":', result.affectedRows);
+          console.log(`📅 Semana ${fechaStr} marcada como 'falla'`);
+        }
+      }
+    );
+  } catch (error) {
+    console.error('❌ Error general en actualizarEstadosFalla:', error);
+  }
+}
+
 
 
 
@@ -535,6 +558,7 @@ module.exports = {
   actualizarEstadosAtrasos,
   actualizarEstadosAdelantos,
   actualizarClasificacionCredito,
-  asignarPuntosPorCumplimiento
+  asignarPuntosPorCumplimiento,
+  actualizarEstadosFalla
 
 };
