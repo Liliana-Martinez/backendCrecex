@@ -12,7 +12,9 @@ const paymentsRouter = require('./routes/payments.routes');
 const creditsRouter = require('./routes/credits.routes');
 const searchRoutes = require('./routes/search.routes');
 const creditBureauRouter = require('./routes/credit-bureau.routes');
-const statisticsRoutes = require('./routes/statistics.routes')
+const statisticsRoutes = require('./routes/statistics.routes');
+const commissionsRoutes = require('./routes/commissions.routes');
+
 const app = express(); //Crea instancia de express que es la app del servidor
 
 
@@ -31,5 +33,5 @@ app.use('/api/credit-bureau', creditBureauRouter);
 app.use('/api/search', searchRoutes);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/statistics', statisticsRoutes);
-
+app.use('/api/commissions', commissionsRoutes );
 module.exports = app
