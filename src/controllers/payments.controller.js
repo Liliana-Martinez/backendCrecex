@@ -391,7 +391,7 @@ const actualizarPago = (
   esSemanaActual = false
 ) => {
   return new Promise((resolve, reject) => {
-    // 📌 Obtener datos actuales del pago
+    //  Obtener datos actuales del pago
     db.query(
       'SELECT recargos, cantidadEfectivo, tipoPago FROM pagos WHERE idPago = ?',
       [idPago],

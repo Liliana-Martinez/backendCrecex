@@ -1,10 +1,8 @@
-const { Router } = require('express');
-const router = Router();
-
-// Importa tu controlador
+const express = require('express');
+const router = express.Router();
 const commissionsController = require('../controllers/commissions.controller');
 
-// Ejemplo de endpoint
-router.get('/', commissionsController.getAllCommissions);
+
+router.get('/', commissionsController.getCreditsWeekByZone );
 
 module.exports = router;
