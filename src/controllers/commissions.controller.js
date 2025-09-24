@@ -98,7 +98,7 @@ const getCreditsWeekByZone = (req, res) => {
                   // Comisión según porcentaje
                   let porcentajeComision = 0;
                   // (tip: podrías usar >= 100 para tolerar redondeos)
-                  if (porcentajeCobrado <= 100) porcentajeComision = 0.08;
+                  if (porcentajeCobrado >= 100) porcentajeComision = 0.08;
                   else if (porcentajeCobrado >= 90) porcentajeComision = 0.07;
                   else if (porcentajeCobrado >= 80) porcentajeComision = 0.06;
                   else if (porcentajeCobrado >= 70) porcentajeComision = 0.05;

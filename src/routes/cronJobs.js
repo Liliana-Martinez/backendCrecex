@@ -14,7 +14,7 @@ cron.schedule('01 12 * * 3', () => { //VIERNES 1:00PM
 });
 
 //maneja estados pendientes a falla lunes a la 1:00PM
-cron.schedule('02 12 * * 3', () => {
+cron.schedule('52 12 * * 3', () => {
   console.log('⏰ Ejecutando tarea automática: actualizar estados a "falla"');
   actualizarEstadosFalla();
 });
