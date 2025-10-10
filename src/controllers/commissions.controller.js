@@ -8,17 +8,17 @@ const getCreditsWeekByZone = (req, res) => {
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=Dom, 6=Sáb
 
-  // 👉 SÁBADO (inicio de semana de corte)
+  //  SÁBADO inicio de senmna
   const saturday = new Date(today);
   saturday.setDate(today.getDate() - ((dayOfWeek + 1) % 7));
   saturday.setHours(0, 0, 0, 0);
 
-  // 👉 VIERNES (cierre de semana de corte)
+  //  VIERNES cierre semna
   const friday = new Date(saturday);
   friday.setDate(saturday.getDate() + 6);
   friday.setHours(23, 59, 59, 999);
 
-  // Cantidad de créditos creados en la semana y recargos de créditos
+  // Cantidad de creeditos creados en la semana y recargos de créditos
   db.query(
     `SELECT COUNT(*) AS cantidad,
             SUM(c.recargos) AS recargosCreditos
@@ -36,7 +36,7 @@ const getCreditsWeekByZone = (req, res) => {
       const recargosCreditos = creditRows[0]?.recargosCreditos || 0;
       const total = cantidad * 100;
 
-      // Recargos de pagos pagados en la semana (sábado→viernes)
+      // Recargos de pagos pagados en la semana (sábado a viernes)
       db.query(
         `SELECT SUM(p.recargos) AS recargosPagos
          FROM pagos p
@@ -53,7 +53,7 @@ const getCreditsWeekByZone = (req, res) => {
           const recargosPagos = pagoRows[0]?.recargosPagos || 0;
           const totalRecargos = recargosCreditos + recargosPagos;
 
-          // 🔹 Abonos esperados SOLO de esta semana (fechaEsperada sábado→viernes) y créditos activos
+          // Abonos esperados SOLO de esta semana (fechaEsperada sábado viernes) y créditos activos
           db.query(
             `SELECT SUM(p.cantidad) AS totalAbonosPosibles
              FROM pagos p
@@ -69,10 +69,8 @@ const getCreditsWeekByZone = (req, res) => {
                 console.error(err3);
                 return res.status(500).json({ error: 'Error al obtener abonos' });
               }
-
               const totalAbonosPosibles = abonoRows[0]?.totalAbonosPosibles || 0;
-
-              // 🔹 Lo realmente cobrado en la semana (pagado sábado→viernes)
+              // Lo realmente cobrado en la semana (pagado sábado aa viernes)
               db.query(
                 `SELECT SUM(p.cantidadPagada) AS totalCobrado
                  FROM pagos p
@@ -97,7 +95,6 @@ const getCreditsWeekByZone = (req, res) => {
 
                   // Comisión según porcentaje
                   let porcentajeComision = 0;
-                  // (tip: podrías usar >= 100 para tolerar redondeos)
                   if (porcentajeCobrado >= 100) porcentajeComision = 0.08;
                   else if (porcentajeCobrado >= 90) porcentajeComision = 0.07;
                   else if (porcentajeCobrado >= 80) porcentajeComision = 0.06;

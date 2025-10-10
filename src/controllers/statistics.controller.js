@@ -123,8 +123,7 @@ async function getMonthlyReport() {
         //Consulta en la tabla creditos para obtener los creditos de la semana
         const queryCreditSum = `
         SELECT SUM(monto) AS expenses
-        FROM creditos
-        WHERE DATE(fechaEntrega) = CURDATE()`;
+        FROM creditos`;
 
         const creditResult = await queryAsync(queryCreditSum);
 
