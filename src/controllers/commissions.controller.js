@@ -1,12 +1,24 @@
 const db = require('../db');
 
+//Helper
+function queryAsync(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, result) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+}
 
 const getCreditsWeekByZone = (req, res) => {
+
   const { idZona } = req.query;
   if (!idZona) return res.status(400).json({ error: 'Se requiere idZona' });
 
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=Dom, 6=Sáb
+  console.log('today: ', today);
+  console.log('day: ', dayOfWeek);
 
   //  SÁBADO inicio de senmna
   const saturday = new Date(today);
@@ -14,6 +26,7 @@ const getCreditsWeekByZone = (req, res) => {
   saturday.setHours(0, 0, 0, 0);
 
   //  VIERNES cierre semna
+  console.log('idZona: ', idZona);
   const friday = new Date(saturday);
   friday.setDate(saturday.getDate() + 6);
   friday.setHours(23, 59, 59, 999);

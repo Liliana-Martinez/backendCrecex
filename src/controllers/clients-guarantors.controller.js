@@ -180,6 +180,7 @@ async function updateClient(idCliente, dataToUpdate) {
             zonaData[fieldMap.zonas[key]] = dataToUpdate[key];
         } else if (key === 'garantias') {
             const garantiasObj = dataToUpdate.garantias || {};
+            console.log('garantiasObj: ', garantiasObj);
 
             for( const gkey of Object.keys(garantiasObj)) {
                 const descripcion = garantiasObj[gkey];
@@ -194,7 +195,7 @@ async function updateClient(idCliente, dataToUpdate) {
                     if (descTrim.length > 0) garantias.push(descTrim);
                 }
             }
-            console.log('descripcion dentro del for: ', descripcion);
+            console.log('garantias en un array: ', garantias);
 
         }
     }
@@ -233,24 +234,22 @@ async function updateClient(idCliente, dataToUpdate) {
     // Actualizar garantías
     console.log('Id del cliente antes de actualizar garantias: ', idCliente);
     console.log('Garantias: ', garantias);
-    let resultGarantias = null;
+    let resultGarantias = [];
 
-    if (garantias && Object.keys(garantias).length > 0) {
+    if (Array.isArray(garantias) && garantias.length > 0) {
         // Borro todas las garantías del cliente
         const deleteResult = await queryAsync('DELETE FROM garantias_cliente WHERE idCliente = ?', [idCliente]);
         console.log('Resultado del delete: ', deleteResult);
 
         console.log('garantias antes de actualizarse: ', garantias);
-        console.log('descripcion: ', descripcion);
-        for (const key of Object.keys(garantias)) {
+        //Recorrer cada garantia del arreglo
+        for (const descripcion of garantias) {
             const insertSQL = `INSERT INTO garantias_cliente (idCliente, descripcion) VALUES (?, ?)`;
             const insertResult = await queryAsync(insertSQL, [idCliente, descripcion]);
             resultGarantias.push(insertResult);
         }
     }
 
-
-    
     return {
         message: 'Datos actualizados correctamente',
         cliente: resultCliente,
