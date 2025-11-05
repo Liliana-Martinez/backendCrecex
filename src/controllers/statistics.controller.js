@@ -174,7 +174,7 @@ async function getWeeklyCredits() {
 async function getMonthlyCredits() {
     try {
         const queryMonthly = `SELECT idCredito, monto AS creditAmount, fechaEntrega AS date FROM ${TABLE_CREDITS} WHERE MONTH(fechaEntrega) = MONTH(CURDATE())
-        AND YEAR(fechaEntrega) = YEAR(CURDATE())`;
+        AND YEAR(fechaEntrega) = YEAR(CURDATE())`;l
 
         const monthlyCredits = await queryAsync(queryMonthly);
         return monthlyCredits;
