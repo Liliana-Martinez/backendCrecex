@@ -1,3 +1,4 @@
+//const { now } = require('moment');
 const db = require('../db');
 
 //Helper
@@ -5,146 +6,119 @@ function queryAsync(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, result) => {
       if (err) return reject(err);
-      resolve(results);
+      resolve(result);
     });
   });
 }
 
-const getCreditsWeekByZone = (req, res) => {
+const getCommissionesByZone = async (idZona) => {
+  const collectionExpenses = await getCollectionExpenses(idZona);//Columna gastos de cobranza
+  /*const collectionPercentage = await getCollectionPercentage(idZona);//Columna porcentaje de cobranza
+  const numberOfCredits = await getNumberOfCredits(idZona); //Numero de creditos
+  const extras = await getExtras(idZona); //Extras*/
 
-  const { idZona } = req.query;
-  if (!idZona) return res.status(400).json({ error: 'Se requiere idZona' });
+  return {
+    collectionExpenses,
+    /*collectionPercentage,
+    numberOfCredits,
+    extras*/
+  };
+}
 
-  const today = new Date();
-  const dayOfWeek = today.getDay(); // 0=Dom, 6=Sáb
-  console.log('today: ', today);
-  console.log('day: ', dayOfWeek);
+async function getCollectionExpenses(idZona) {
+  try {
 
-  //  SÁBADO inicio de senmna
-  const saturday = new Date(today);
-  saturday.setDate(today.getDate() - ((dayOfWeek + 1) % 7));
-  saturday.setHours(0, 0, 0, 0);
+    let collectionExpenses = 0; //Variable para guardar el total de "Gastos de cobranza" que gano la promotora
+    console.log('idZona en el controller de comisiones: ', idZona);
+    //const queryDate = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const lastSaturday = new Date(today);
+    lastSaturday.setDate(today.getDate() - ((dayOfWeek + 1) % 7)); //Calcula el sabado anterior al dia de la consulta
+    const nextFriday = new Date(lastSaturday);
+    nextFriday.setDate(lastSaturday.getDate() + 6); //Calcular el proximo viernes
+    //Formatear las fechas para enviar como parametros solo fecha y no con la hora
+    const formatDate = date => date.toISOString().split('T')[0];
+    const startDate = formatDate(lastSaturday);
+    const endDate = formatDate(nextFriday);
 
-  //  VIERNES cierre semna
-  console.log('idZona: ', idZona);
-  const friday = new Date(saturday);
-  friday.setDate(saturday.getDate() + 6);
-  friday.setHours(23, 59, 59, 999);
+    //Consulta para obtener la sumatoria de la columna "cantidad" de la tabla pagos (que hay en el rango sabado-viernes)
+    const sumQuantity = `
+      SELECT SUM(cantidad) AS totalCantidad 
+      FROM pagos p 
+      INNER JOIN creditos c ON p.idCredito = c.idCredito
+      INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+      WHERE 
+        c.estado = 'activo' 
+        AND cl.idZona = ?
+        AND p.fechaEsperada BETWEEN ? AND ?`; 
+    const resultSumQuantity = await queryAsync(sumQuantity, [idZona, startDate, endDate]);
+    const total = resultSumQuantity[0]?.totalCantidad || 0;
+    console.log(resultSumQuantity);
 
-  // Cantidad de creeditos creados en la semana y recargos de créditos
-  db.query(
-    `SELECT COUNT(*) AS cantidad,
-            SUM(c.recargos) AS recargosCreditos
-     FROM creditos c
-     JOIN clientes cl ON c.idCliente = cl.idCliente
-     WHERE cl.idZona = ? AND c.fechaEntrega >= ? AND c.fechaEntrega <= ?`,
-    [idZona, saturday, friday],
-    (err, creditRows) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ error: 'Error al obtener créditos' });
+    //Consulta para obtener la sumatoria de "cantidadPagada" que representa lo que al final cobraron en total en la semana las promotoras
+    const sumAmountPaid = `
+      SELECT 
+      SUM(cantidadPagada) AS totalCantidadPagada,
+      SUM(extras) AS totalExtras
+      FROM pagos p
+      INNER JOIN creditos c ON p.idCredito = c.idCredito
+      INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+      WHERE
+        c.estado = 'activo'
+        AND cl.idZona = ?
+        AND p.fechaPagada BETWEEN ? AND ?
+        AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;
+
+    const resultSumAmountPaid = await queryAsync(sumAmountPaid, [idZona, startDate, endDate]);
+    const amountPaid = resultSumAmountPaid[0]?.totalCantidadPagada || 0;
+    const extras = resultSumAmountPaid[0]?.totalExtras || 0;
+    const totalPaid = amountPaid + extras;
+    //const { totalCantidad, totalCantidadPagada } = rows[0];
+    console.log('Consulta para obtener las sumas: ', resultSumAmountPaid);
+    console.log('amountPaid: ', amountPaid);
+    console.log('extras: ', extras);
+
+    //comparar el resultado de "cantidad" con "cantidadPag
+    // ada" para obtener los porcentajes
+    if (totalPaid >= total) { //Es decir, 100% o más
+      collectionExpenses = (totalPaid * 8) / 100;
+    } else {
+      //Conocer primero el porcentaje de lo que se entrego
+      const percentage = ((totalPaid * 100) / total).toFixed(2);
+      //Una vez conocido el % ver los rangos para obtener el porcentaje de cobranza
+      if (percentage >= 90 && percentage <= 99) {
+        collectionExpenses =  (totalPaid * 7) / 100;
+      } else if (percentage >= 80 && percentage <= 89) {
+        collectionExpenses = (totalPaid * 6) / 100;
+      } else if (percentage >= 70 && percentage <= 79) {
+        collectionExpenses = (totalPaid * 5) / 100;
+      } else if (percentage >= 60 && percentage <= 69) {
+        collectionExpenses = (totalPaid * 4) / 100;
+      } else if (percentage >= 50 && percentage <= 59) {
+        collectionExpenses = (totalPaid * 3) / 100;
+      } else if (percentage >= 40 && percentage <= 49) {
+        collectionExpenses = (totalPaid * 2) / 100;
+      } else if (percentage >= 30 && percentage <= 39) {
+        collectionExpenses = (totalPaid * 1) / 100;
+      } else {
+        collectionExpenses = 0;
       }
-
-      const cantidad = creditRows[0]?.cantidad || 0;
-      const recargosCreditos = creditRows[0]?.recargosCreditos || 0;
-      const total = cantidad * 100;
-
-      // Recargos de pagos pagados en la semana (sábado a viernes)
-      db.query(
-        `SELECT SUM(p.recargos) AS recargosPagos
-         FROM pagos p
-         JOIN creditos c ON p.idCredito = c.idCredito
-         JOIN clientes cl ON c.idCliente = cl.idCliente
-         WHERE cl.idZona = ? AND p.fechaPagada >= ? AND p.fechaPagada <= ?`,
-        [idZona, saturday, friday],
-        (err2, pagoRows) => {
-          if (err2) {
-            console.error(err2);
-            return res.status(500).json({ error: 'Error al obtener recargos de pagos' });
-          }
-
-          const recargosPagos = pagoRows[0]?.recargosPagos || 0;
-          const totalRecargos = recargosCreditos + recargosPagos;
-
-          // Abonos esperados SOLO de esta semana (fechaEsperada sábado viernes) y créditos activos
-          db.query(
-            `SELECT SUM(p.cantidad) AS totalAbonosPosibles
-             FROM pagos p
-             JOIN creditos c ON p.idCredito = c.idCredito
-             JOIN clientes cl ON c.idCliente = cl.idCliente
-             WHERE cl.idZona = ? 
-               AND c.estado = 'Activo'
-               AND p.fechaEsperada >= ?
-               AND p.fechaEsperada <= ?`,
-            [idZona, saturday, friday],
-            (err3, abonoRows) => {
-              if (err3) {
-                console.error(err3);
-                return res.status(500).json({ error: 'Error al obtener abonos' });
-              }
-              const totalAbonosPosibles = abonoRows[0]?.totalAbonosPosibles || 0;
-              // Lo realmente cobrado en la semana (pagado sábado aa viernes)
-              db.query(
-                `SELECT SUM(p.cantidadPagada) AS totalCobrado
-                 FROM pagos p
-                 JOIN creditos c ON p.idCredito = c.idCredito
-                 JOIN clientes cl ON c.idCliente = cl.idCliente
-                 WHERE cl.idZona = ? 
-                   AND p.fechaPagada >= ? 
-                   AND p.fechaPagada <= ?`,
-                [idZona, saturday, friday],
-                (err4, cobradoRows) => {
-                  if (err4) {
-                    console.error(err4);
-                    return res.status(500).json({ error: 'Error al obtener cobros' });
-                  }
-
-                  const totalCobrado = cobradoRows[0]?.totalCobrado || 0;
-
-                  // Porcentaje realmente cobrado
-                  const porcentajeCobrado = totalAbonosPosibles > 0
-                    ? (totalCobrado / totalAbonosPosibles) * 100
-                    : 0;
-
-                  // Comisión según porcentaje
-                  let porcentajeComision = 0;
-                  if (porcentajeCobrado >= 100) porcentajeComision = 0.08;
-                  else if (porcentajeCobrado >= 90) porcentajeComision = 0.07;
-                  else if (porcentajeCobrado >= 80) porcentajeComision = 0.06;
-                  else if (porcentajeCobrado >= 70) porcentajeComision = 0.05;
-                  else if (porcentajeCobrado >= 60) porcentajeComision = 0.04;
-                  else if (porcentajeCobrado >= 50) porcentajeComision = 0.03;
-                  else if (porcentajeCobrado >= 40) porcentajeComision = 0.02;
-                  else if (porcentajeCobrado >= 30) porcentajeComision = 0.01;
-                  else if (porcentajeCobrado > 20) porcentajeComision = 0;
-
-                  const comision = totalAbonosPosibles * porcentajeComision;
-
-                  res.json({
-                    cantidad,
-                    total,
-                    totalRecargos,
-                    totalAbonosPosibles,
-                    totalCobrado,
-                    porcentajeCobrado: porcentajeCobrado.toFixed(2) + '%',
-                    porcentajeComision: (porcentajeComision * 100) + '%',
-                    comision,
-                    rango: {
-                      inicio: saturday,
-                      fin: friday
-                    }
-                  });
-                }
-              );
-            }
-          );
-        }
-      );
     }
-  );
+
+    console.log('Gasto de cobranza: ', collectionExpenses);
+    return collectionExpenses;
+  } catch(error) {
+    console.log('Error al obtener los gastos de cobranza.', error);
+    throw error
+  }
+}
+
+
+
+module.exports = { 
+  getCommissionesByZone
+  //getCreditsWeekByZone
+  //getCollectionExpenses
 };
-
-
-
-module.exports = { getCreditsWeekByZone };
 
