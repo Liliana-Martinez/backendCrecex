@@ -130,54 +130,130 @@ const insertAvalGarantias = (avalId, garantias) => {
 };
 
 async function updateClient(idCliente, dataToUpdate) {
-    console.log('Id del cliente a modificar: ', idCliente);
+
+    const fieldMap = {
+        clientes: {
+            'Nombre': 'nombre',
+            'Apellido paterno': 'apellidoPaterno',
+            'Apellido materno': 'apellidoMaterno',
+            'Edad': 'edad',
+            'Domicilio': 'domicilio',
+            'Colonia': 'colonia',
+            'Ciudad': 'ciudad',
+            'Teléfono': 'telefono',
+            'Clasificación': 'clasificacion',
+            'Puntos': 'puntos',
+            'Trabajo': 'trabajo',
+            'Domicilio del trabajo': 'domicilioTrabajo',
+            'Teléfono del trabajo': 'telefonoTrabajo',
+            'Nombre de la referencia': 'nombreReferencia',
+            'Domicilio de la referencia': 'domicilioReferencia',
+            'Teléfono de la referencia': 'telefonoReferencia',
+        },
+        zonas: {
+            'Zona': 'codigoZona',
+            'zoneId': 'idZona'
+        },
+        garantias: {
+            'Garantía uno': 'garantiaUno',
+            'Garantía dos': 'garantiaDos',
+            'Garantía tres': 'garantiaTres'
+        }
+    };
+
+    //console.log('Id del cliente a modificar: ', idCliente);
     console.log('Datos a modificar: ', dataToUpdate);
 
     if (!idCliente || Object.keys(dataToUpdate).length === 0) {
         throw new Error('Faltan datos para actualizar.');
     }
 
-    // Separamos garantias del resto de los campos
-    const { garantias, ...clientFields } = dataToUpdate;
+    // Separar datos por tabla
+    const clienteData = {};
+    const zonaData = {};
+    let garantias = [];
 
-    // ---------------------------
-    // 1. Actualizar tabla clients
-    // ---------------------------
-    let resultCliente = null;
+    for (const key in dataToUpdate) {
+        if (fieldMap.clientes[key]) {
+            clienteData[fieldMap.clientes[key]] = dataToUpdate[key];
+        } else if (fieldMap.zonas[key]) {
+            zonaData[fieldMap.zonas[key]] = dataToUpdate[key];
+        } else if (key === 'garantias') {
+            const garantiasObj = dataToUpdate.garantias || {};
+            console.log('garantiasObj: ', garantiasObj);
 
-    if (Object.keys(clientFields).length > 0) {
-        const campos = Object.keys(clientFields);
-        const valores = campos.map(key => clientFields[key]);
-        const setClause = campos.map(key => `${key} = ?`).join(', ');
-        const queryToUpdate = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
+            for( const gkey of Object.keys(garantiasObj)) {
+                const descripcion = garantiasObj[gkey];
 
-        valores.push(idCliente);
-        resultCliente = await queryAsync(queryToUpdate, valores);
+                if (typeof descripcion === 'string') {
+                    const descTrim = descripcion.trim();
+                    if (descTrim.length > 0) {
+                        garantias.push(descTrim);
+                    }
+                } else if(descripcion != null) {
+                    const descTrim = String(descripcion).trim();
+                    if (descTrim.length > 0) garantias.push(descTrim);
+                }
+            }
+            console.log('garantias en un array: ', garantias);
+
+        }
     }
 
-    // -------------------------------------
-    // 2. Insertar garantías en nueva tabla
-    // -------------------------------------
+    //Actualizar tabla clientes
+    let resultCliente = null;
+    if (Object.keys(clienteData).length > 0) {
+        const campos = Object.keys(clienteData);
+        const valores = campos.map(c => clienteData[c]);
+        const setClause = campos.map(c => `${c} = ?`).join(', ');
+        const query = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
+        valores.push(idCliente);
+        resultCliente = await queryAsync(query, valores);
+    }
+
+
+    /*Actualizar zona del cliente
+    console.log('Id del cliente antes de actualizar zona: ', idCliente);
+    console.log('Zonadata: ', zonaData);*/
+    let resultZona = null;
+    if (Object.keys(zonaData).length > 0) {
+        const campos = Object.keys(zonaData).filter(c => c === 'idZona');
+
+        if (campos.length > 0) {
+            const valores = campos.map(c => zonaData[c]);
+            const setClause = campos.map(c => `${c} = ?`).join(', ');
+            const query = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
+            valores.push(idCliente);
+
+            resultZona = await queryAsync(query, valores);
+            console.log('Resultado de update zona: ', resultZona);
+        }
+    }
+
+
+    // Actualizar garantías
+    console.log('Id del cliente antes de actualizar garantias: ', idCliente);
+    console.log('Garantias: ', garantias);
     let resultGarantias = [];
 
-    if (garantias && typeof garantias === 'object') {
-        // Primero, eliminamos las garantías anteriores del cliente
-        await queryAsync('DELETE FROM garantias_cliente WHERE idCliente = ?', [idCliente]);
+    if (Array.isArray(garantias) && garantias.length > 0) {
+        // Borro todas las garantías del cliente
+        const deleteResult = await queryAsync('DELETE FROM garantias_cliente WHERE idCliente = ?', [idCliente]);
+        console.log('Resultado del delete: ', deleteResult);
 
-        // Insertamos las nuevas garantías
-        for (const key in garantias) {
-            const descripcion = garantias[key];
-            if (descripcion && descripcion.trim() !== '') {
-                const insertGarantiaSQL = `INSERT INTO garantias_cliente (idCliente, descripcion) VALUES (?, ?)`;
-                const insertResult = await queryAsync(insertGarantiaSQL, [idCliente, descripcion]);
-                resultGarantias.push(insertResult);
-            }
+        console.log('garantias antes de actualizarse: ', garantias);
+        //Recorrer cada garantia del arreglo
+        for (const descripcion of garantias) {
+            const insertSQL = `INSERT INTO garantias_cliente (idCliente, descripcion) VALUES (?, ?)`;
+            const insertResult = await queryAsync(insertSQL, [idCliente, descripcion]);
+            resultGarantias.push(insertResult);
         }
     }
 
     return {
         message: 'Datos actualizados correctamente',
         cliente: resultCliente,
+        zona: resultZona,
         garantias: resultGarantias
     };
 }
