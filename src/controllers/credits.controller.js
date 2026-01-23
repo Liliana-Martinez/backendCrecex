@@ -59,7 +59,7 @@ const createNewCredit = (req, res) => {
                 }
 
                 const clasificacion = resultCliente[0].clasificacion.toUpperCase();
-
+//Segun la clasificacion del cliente se le puede prestar o no
                 let validacionCorrecta = false;
                 switch (clasificacion) {
                     case 'D':
@@ -263,7 +263,7 @@ const createRenewCredit = (req, res) => {
                 const querySemanasPagadas = `
                     SELECT COUNT(*) AS semanasPagadas
                     FROM pagos
-                    WHERE idCredito = ? AND estado = 'Pagado'
+                    WHERE idCredito = ? AND estado = 'Pagado', 'Adelantado'
                 `;
 
                 db.query(querySemanasPagadas, [idCreditoAnterior], (err4, pagadasRows) => {
