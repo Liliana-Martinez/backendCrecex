@@ -188,18 +188,18 @@ async function getExtras(idZona) {
 
   //Obtener los supervisores (no repetidos y no nulos) para guardarlos en una lista
   const supervisorsListQuery = `
-    SELECT DISTINCT supervicion 
+    SELECT DISTINCT supervisor 
     FROM zonas
-    WHERE supervicion IS NOT NULL AND supervicion != ''`;
+    WHERE supervisor IS NOT NULL AND supervisor != ''`;
   const supervisorsListResult = await queryAsync(supervisorsListQuery);
 
   //Crear la lista con los supervisores
-  let supervisorsList = supervisorsListResult.map(row => row.supervicion);
+  let supervisorsList = supervisorsListResult.map(row => row.supervisor);
   console.log('Lista de supervisores: ', supervisorsList);
 
   //Consulta para obtener la promotora y la supervicion respecto al idZona 
   const staffQuery = `
-    SELECT promotora, supervicion
+    SELECT promotor, supervisor
     FROM zonas
     WHERE 
       idZona = ?`;
@@ -207,11 +207,11 @@ async function getExtras(idZona) {
   const staffQueryResult = await queryAsync(staffQuery, [idZona]);
   console.log(staffQueryResult);
   if (staffQueryResult.length > 0) {
-    let promoter = staffQueryResult[0].promotora || null;
-    let supervicion = staffQueryResult[0].supervicion || null;
+    let promoter = staffQueryResult[0].promotor || null;
+    let supervicion = staffQueryResult[0].supervisor || null;
     if (supervisorsList.includes(promoter)) {
       //1. Obtener los IDs de las zonas que le pertenecen al (la) supervisor(a)
-      const supervisorZonesQuery = `SELECT idZona FROM zonas WHERE supervicion = ?`;
+      const supervisorZonesQuery = `SELECT idZona FROM zonas WHERE supervisor = ?`;
       const supervisorZonesResult = await queryAsync(supervisorZonesQuery, [promoter]);
 
       let expectedByZone = 0; 

@@ -26,7 +26,16 @@ router.get('/getAvailableZones', async (req, res) => {
     }
 });
 
-router.post('/add', async (req, res) => {
+router.get('/getAssignedZones', async (req, res) => {
+    try {
+        const assignedZones = await zoneController.getAssignedZones();
+        res.status(200).json(assignedZones);
+    } catch (error) {
+        res.status(500).json({ message: 'Error al obtener las zonas asignadas.' })
+    }
+})
+
+router.post('/', async (req, res) => {
   try {
 
     const zoneData = req.body;
@@ -44,7 +53,16 @@ router.post('/add', async (req, res) => {
   }
 });
 
-
+router.put('/modify', async (req, res) => {
+    const dataToUpdate = req.body;
+    try {
+        const resultado = await zoneController.updateZone(dataToUpdate);
+        return res.json({ message: 'Zona actualizada.', data: resultado });
+    } catch (error) {
+        console.error('Error al modificar la zona.', error);
+        return res.status(500).json({ error: 'Error al modificar la zona'})
+    }
+});
 
 module.exports = router;
 
