@@ -1,5 +1,5 @@
 const db = require('../db');
-//Llenado de tabla cuando busca al cliente
+//Llenado de tabla cuando se busca la zona, busca los clientes y toddo respecto al creditos de ellos
 async function calcularPagos(clientes, fechaEsperada) {
   const results = await Promise.all(clientes.map(cliente => {
     return new Promise((res, rej) => {
@@ -11,6 +11,7 @@ async function calcularPagos(clientes, fechaEsperada) {
       `;
       db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
         if (err) return rej(err);
+        // Manda a llamar la func de la logica el cual calcula, falla, atrso,ad
         const { atraso, adelanto, falla } = calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
         res({
           ...cliente,
@@ -21,10 +22,11 @@ async function calcularPagos(clientes, fechaEsperada) {
       });
     });
   }));
-
+  //Regresa los datos del cliente con el estado real del credito
   return results;
 }
 
+//Analiza el historial de los pagos, ya sea ad, atrs, falla
 function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
   const ref = new Date(fechaReferencia); // Sábado de la semana actual
   let adelantoDisponible = 0;
@@ -63,7 +65,6 @@ function calcularEstadoDePagosOrdenado(pagos, fechaReferencia) {
     falla
   };
 }
-
 
 const getClientsFromZone = (idZona) => {
   console.log('ID en el controller:', idZona);
@@ -111,7 +112,7 @@ const getClientsFromZone = (idZona) => {
         ) AS numeroCreditos,
         p.numeroSemana,
         p.cantidadEfectivo,
-        p.tipoPago -- ✅ lo necesitamos para condicionar el valor
+        p.tipoPago --  lo necesitamos para condicionar el valor
       FROM clientes AS c
       JOIN creditos AS cr ON c.idCliente = cr.idCliente
       LEFT JOIN pagos AS p 
@@ -380,7 +381,6 @@ const registrarPagos = async (pagos) => {
   }
 };
 
-
 const actualizarPago = (
   idPago,
   cantidadPagada,
@@ -402,13 +402,13 @@ const actualizarPago = (
         const recargoActual = Number(rows[0]?.recargos || 0);
         const cantidadEfectivoActual = Number(rows[0]?.cantidadEfectivo || 0);
 
-        // 📌 Calcular nuevo recargo
+        //  Calcular nuevo recargo
         const nuevoRecargo = recargoActual + recargoExtra;
 
-        // 📌 Determinar nuevo tipo de pago
+        // Determinar nuevo tipo de pago
         const nuevoTipoPago = tipoPago;
 
-        // 📌 Calcular nueva cantidad de efectivo
+        // Calcular nueva cantidad de efectivo
         let nuevaCantidadEfectivo;
         if (tipoPago === 'pagado') {
           // Siempre reiniciar a 0 si es 'pagado'
@@ -421,7 +421,7 @@ const actualizarPago = (
           nuevaCantidadEfectivo = cantidadEfectivoActual;
         }
 
-        // 📌 Actualizar en la base de datos
+        //  Actualizar en la base de datos
         db.query(
           `UPDATE pagos 
            SET cantidadPagada = ?, 
@@ -448,8 +448,6 @@ const actualizarPago = (
     );
   });
 };
-
-
 
 const actualizarCreditoAPagado = (idCredito) => {
   return new Promise((resolve, reject) => {
@@ -509,6 +507,7 @@ async function actualizarEstadosAdelantos() {
     console.error('Error en actualizarEstadosAdelantos:', error);
   }
 }
+
 async function actualizarEstadosFalla() {
   try {
     const hoy = new Date();
@@ -538,7 +537,6 @@ async function actualizarEstadosFalla() {
     console.error('Error general en actualizarEstadosFalla:', error);
   }
 }
-
 
 const actualizarClasificacionCredito = async (idCredito) => {
   try {
@@ -593,7 +591,6 @@ const actualizarClasificacionCredito = async (idCredito) => {
   }
 };
 
-
 const asignarPuntosPorCumplimiento = async (idCredito) => {
   try {
     // Obtener cumplimiento, monto y idCliente
@@ -643,7 +640,7 @@ module.exports = {
   registrarPagos, 
   actualizarPago,
   actualizarEstadosAtrasos,
-  actualizarEstadosAdelantos,
+  actualizarEstadosAdelantos,                                           
   actualizarClasificacionCredito,
   asignarPuntosPorCumplimiento,
   actualizarEstadosFalla
