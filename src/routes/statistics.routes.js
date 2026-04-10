@@ -3,47 +3,37 @@ const router = express.Router();
 const statistics = require('../controllers/statistics.controller')
 
 
-//Ruta para el apartado de 'caja'
-router.get('/cash/form', async (req, res) => { 
+//Ruta para guardar ingreso/egreso en caja
+router.post('/cash', async (req, res) => { 
     try {
-        const result = await statistics.getInitialAmountDaily();
-        res.status(200).json(result);
+        const transaction = req.body;
+        console.log('dataToSend recibido en routes: ', transaction);
+        const result = await statistics.saveTransaction(transaction);
+        res.status(200).json({message: 'Movimeinto guardado'});
     } catch(error) {
-        console.error('Error al obtener el total de caja', error);
-        res.status(500).json({ message: 'Error al obtener el total del día '});
+        console.error('Error al guardar movimiento en caja', error);
+        res.status(500).json({ message: 'Error al guardar movimiento en caja'});
     }
 });
 
 //Ruta para el reporte diario de ingresos y egresos
-router.get('/cash/day', async (req, res) => {
+router.get('/cash', async (req, res) => {
     try {
-        const result = await statistics.getDailyReport();
-        res.status(200).json(result);
-    } catch(error) {
-        console.error('Error el reporte diario: ', error);
-        res.status(500).json({ message: 'Error al obtener el reporte diario' });
-    }
-});
+        const { reportType } = req.query; //Recibir el tipo de report que llega del front
+        console.log('Tipo de reporte en el back: ', reportType);
 
-//Ruta para el reporte semanal de ingresos y egresos
-router.get('/cash/week', async (req, res) => {
-    try {
-        const result = await statistics.getWeeklyReport();
-        res.status(200).json(result);
-    } catch(error) {
-        console.error('Error el reporte diario: ', error);
-        res.status(500).json({ message: 'Error al obtener el reporte diario' });
-    }
-});
+        const reportOptions = ['daily', 'weekly', 'monthly'];
 
-//Ruta para el reporte mensual de ingresos y egresos
-router.get('/cash/month', async (req, res) => {
-    try {
-        const result = await statistics.getWeeklyReport();
-        res.status(200).json(result);
+        if (!reportType || !reportOptions.includes(reportType)) {
+            return res.status(400).json({ message: 'Opción de reporte no válido.'});
+        }
+
+        //Lamar al controller
+        const result =  await statistics.getFinancialReportByPeriod(reportType);
+        return res.status(200).json(result);
     } catch(error) {
-        console.error('Error el reporte diario: ', error);
-        res.status(500).json({ message: 'Error al obtener el reporte diario' });
+        console.error('Error al obtener el reporte: ', error);
+        return res.status(500).json({ message: 'Error al obtener el reporte.'});
     }
 });
 
@@ -58,7 +48,6 @@ router.get('/total-credits/day', async (req, res) => {
     }
 });
 
-
 //Ruta para consultar los creditos totales de la semana
 router.get('/total-credits/week', async (req, res) => {
     try {
@@ -69,7 +58,6 @@ router.get('/total-credits/week', async (req, res) => {
         res.status(500).json({ message: 'Error al obtener creditos de la semana' });
     }
 });
-
 
 //Ruta para consultar los creditos totales del mes
 router.get('/total-credits/month', async (req, res) => {

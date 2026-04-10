@@ -56,6 +56,21 @@ async function getAvailableZones() {
   }
 }
 
+async function getAssignedZones() {
+  try {
+    const assignedZonesQuery = `
+    SELECT codigoZona, promotor, supervisor FROM zonas WHERE promotor IS NOT NULL AND promotor <> '' AND supervisor IS NOT NULL AND supervisor <> ''`;
+
+    const resultAssignedZones = await queryAsync(assignedZonesQuery);
+
+    return {
+      assignedZones: resultAssignedZones 
+    };
+  } catch(error) {
+
+  }
+}
+
 
 async function addZone(zoneData) {
   try {
@@ -91,8 +106,35 @@ async function addZone(zoneData) {
   }
 }
 
+async function updateZone(dataToUpdate) {
+  const { codigoZona, promotor, supervisor } = dataToUpdate;
+
+  if (!codigoZona) {
+    throw new Error('codigoZona es obligatorio');
+  }
+
+  const updateZoneQuery = `
+    UPDATE zonas
+    SET
+      promotor = ?,
+      supervisor = ?
+    WHERE codigoZona = ?
+  `;
+
+  const values = [promotor, supervisor, codigoZona];
+
+  const result = await queryAsync(updateZoneQuery, values);
+
+  return {
+    affectedRows: result.affectedRows
+  };
+}
+
+
 module.exports = {
     getAllZones,
     getAvailableZones,
-    addZone
+    getAssignedZones,
+    addZone,
+    updateZone
 };

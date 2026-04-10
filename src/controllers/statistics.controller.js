@@ -14,128 +14,236 @@ return new Promise((resolve, reject) => {
     });
 }
 
-async function getInitialAmountDaily() {
+function formatDate(date) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() +1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+//Guardar el ingreso/egreso en caja
+async function saveTransaction(transaction) {
     try {
-        const today = new Date();
-        const dayOfWeek = today.getDay(); // 1 = lunes
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-
-        const formattedDate = yesterday.toISOString().split('T')[0]; // yyyy-mm-dd
-        console.log('Fecha consultada:', formattedDate);
-
-
-        if (dayOfWeek === 1) {
-            // Si es lunes, se espera que el valor lo ingrese el usuario, no lo calculamos
-            return { monto: null }; 
-        }
-
-        const [row] = await queryAsync(`
-            SELECT 
-                SUM(ingresosPagos) AS totalIngresosPagos, 
-                SUM(ingresosExtra) AS totalIngresosExtra 
-            FROM caja 
-            WHERE fecha = ?
-            `, [formattedDate]);
-
-        const ingresosPagos = row.totalIngresosPagos || 0;
-        const ingresosExtra = row.totalIngresosExtra || 0;
-
-        const monto = ingresosPagos + ingresosExtra;
-
-        return { monto };
-
+        
     } catch (error) {
         throw error;
     }
 }
 
-async function getDailyReport() {
+//Obtener datos para el formulario y reporte segun sea el tipo, diario, semanal o mensual
+async function getFinancialReportByPeriod(reportType) {
     try {
         const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() +1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        const todayStr = `${yyyy}-${mm}-${dd}`;
-
-        const queryDaily = `SELECT 
-            fecha AS date, 
-            ingresosPagos AS paymentsIncome, ingresosExtra AS extraIncome, ingresosDescripcion AS descriptionIncome, 
-            egresosExtra AS extraExpenses, egresosDescripcion AS descriptionExpenses FROM caja WHERE DATE(fecha) = CURDATE()`;
-
-        const dailyResult = await queryAsync(queryDaily, [todayStr]);
+        const todayFormatted = formatDate(today);//Fecha para las consultas de los ingresos, egresos y comisiones diarias
+        let startDate; //Rango para reporte
+        let endDate; //Rango para reporte
         
-        //Consulta en la tabla creditos para obtener los creditos del dia
-        const queryCreditSum = `
-            SELECT SUM(efectivo) AS expenses
-            FROM creditos
-            WHERE DATE(fechaEntrega) = CURDATE()
+        //Calcular rango
+        if (reportType === 'daily') {
+            startDate = formatDate(today);
+            endDate = formatDate(today);
+        }
+
+        if (reportType === 'weekly') {
+            const day = today.getDay(); //número de dia del mes
+
+            const saturday = new Date(today);
+            saturday.setDate(today.getDate() - ((day + 1) % 7));
+
+            const friday = new Date(saturday);
+            friday.setDate(saturday.getDate() + 6);
+
+            startDate = formatDate(saturday);
+            endDate = formatDate(friday);
+        }
+
+        if (reportType === 'monthly') {
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+            startDate = formatDate(firstDay);
+            endDate = formatDate(lastDay);
+        }
+
+        console.log('Rango: ', startDate, endDate);
+
+        //Query para el total de pagos del día (para valor en el formulario) ✅
+        const dailyTotalPaymentsQuery = `
+        SELECT
+            COALESCE(SUM(
+                CASE
+                    WHEN tipoPago = 'efectivo' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0)) - COALESCE(cantidadEfectivo, 0)
+                    WHEN tipoPago = 'pagado' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0))
+                    ELSE 0
+                END
+            ), 0) AS totalPagos
+        FROM pagos
+        WHERE fechaPagada BETWEEN ? AND ?
+        AND estado IN('pagado', 'incompleto', 'atraso', 'pagoAtrasado')
         `;
+        const [dailyResultPayments] = await queryAsync(dailyTotalPaymentsQuery, [todayFormatted, todayFormatted]);
+        const dailyTotalPayments = dailyResultPayments.totalPagos;
 
-        const creditResult = await queryAsync(queryCreditSum);
+        //Obtener la sumatoria de ingresos extra ✅
+        const totalExtraIncomeQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'ingreso'
+            AND categoria = 'extra'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraIncomeResult] = await queryAsync(totalExtraIncomeQuery, [todayFormatted, todayFormatted]);
+        const totalExtraIncome = totalExtraIncomeResult.totalExtras;
 
-        //Agregar la suma de creditos diarios al objeto de la consulta para el reporte diario
-        const dailyReport = dailyResult.map(row => ({
-            ...row,
-            expenses: creditResult[0]?.expenses || 0
-        }));
-
-        return dailyReport;
-
-    } catch(error) {
-        throw error;
-    }
-}
-
-async function getWeeklyReport() {
-    try {
-        const queryWeekly = `SELECT fecha AS date, ingresosPagos AS paymentsIncome, ingresosExtra AS extraIncome, ingresosDescripcion AS descriptionIncome, egresosExtra AS extraExpenses, egresosDescripcion AS descriptionExpenses FROM caja WHERE YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)`;
-
-        const weeklyResult = await queryAsync(queryWeekly);
-        
-        //Consulta en la tabla creditos para obtener los creditos de la semana
-        const queryCreditSum = `
-        SELECT SUM(monto) AS expenses
+        //Query para obtener las salidas de egresos de creditos del dia ✅
+        const dailyTotalCreditsQuery = `
+        SELECT COALESCE(SUM(efectivo), 0) AS totalCredits
         FROM creditos
-        WHERE DATE(fechaEntrega) = CURDATE()`;
+        WHERE fechaEntrega BETWEEN ? AND ?
+        `;
+        const [dailyResultCredits] = await queryAsync(dailyTotalCreditsQuery, [todayFormatted, todayFormatted]);
+        const dailyTotalCredits = dailyResultCredits.totalCredits;
 
-        const creditResult = await queryAsync(queryCreditSum);
+        //Obtener la sumatoria de egresos extra✅
+        const totalExtraExpensesQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'egreso'
+            AND categoria = 'extra' 
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraExpensesResult] = await queryAsync(totalExtraExpensesQuery, [todayFormatted, todayFormatted]);
+        const totalExtraExpenses = totalExtraExpensesResult.totalExtras;
 
-        //Agregar la suma de creditos diarios al objeto de la consulta para el reporte semanal
-        const weeklyReport = weeklyResult.map(row => ({
-            ...row,
-            expenses: creditResult[0]?.expenses || 0
-        }));
+        //Query para obtener los egresos especificamente de las comisiones del dia✅
+        const dailyTotalCommissionsQuery = `
+        SELECT COALESCE(SUM(monto), 0) AS totalCommissions
+        FROM caja
+        WHERE fecha BETWEEN ? AND ?
+        AND tipoMovimiento = 'egreso'
+        AND categoria = 'comision'
+        `;
+        const [dailyResultCommissions] = await queryAsync(dailyTotalCommissionsQuery, [todayFormatted, todayFormatted]);
+        const dailyTotalCommissions = dailyResultCommissions.totalCommissions;
+        console.log('sumatoria de egresos de comisiones: ', dailyResultCommissions);
 
-        return weeklyReport;
 
-    } catch(error) {
-        throw error;
-    }
-}
+        /****************************************************************************************************************************** */
+        //Consultas para obtener el reporte de ingresos segun el tipo de reporte(weekly o monthly)
+        //Consulta para el total de pagos (weekly, monthly)
+        const totalPaymentsReportQuery = `
+            SELECT COALESCE(SUM(
+            CASE
+                WHEN tipoPago = 'efectivo' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0)) - COALESCE(cantidadEfectivo, 0)
+                WHEN tipoPago = 'pagado' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0))
+            END
+            ), 0) AS totalPagos
+            FROM pagos
+            WHERE fechaPagada BETWEEN ? AND ?
+            AND estado IN ('pagado', 'incompleto', 'atraso', 'pagoAtrasado')
+        `;
+        const [paymentsReportResult] = await queryAsync(totalPaymentsReportQuery, [startDate, endDate]);
+        const paymentsReport = paymentsReportResult.totalPagos;
 
-async function getMonthlyReport() {
-    try {
-        const queryMonthly = `SELECT fecha AS date, ingresosPagos AS paymentsIncome, ingresosExtra AS extraIncome, ingresosDescripcion AS descriptionIncome, egresosExtra AS extraExpenses, egresosDescripcion AS descriptionExpenses FROM caja WHERE YEARWEEK(fecha, 1) = YEARWEEK(CURDATE(), 1)`;
+        //Consulta para obtener los ingresos extra y su descripcion segun el tipo de reporte
+        const extraIncomeReportQuery = `
+            SELECT fecha, descripcion, monto
+            FROM caja
+            WHERE tipoMovimiento = 'ingreso'
+            AND categoria = 'extra'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+            ORDER BY fecha ASC
+        `;
+        const extraIncomeReport = await queryAsync(extraIncomeReportQuery, [startDate, endDate]);
 
-        const monthlyResult = await queryAsync(queryMonthly);
+        //Consulta para obtener la uma de ingresos extra en el rango
+        const totalExtraIncomeReportQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'ingreso'
+            AND categoria = 'extra'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraIncomeReportResult] = await queryAsync(totalExtraIncomeReportQuery, [startDate, endDate]);
+        const totalExtraIncomeReport = totalExtraIncomeReportResult.totalExtras;
+
+        //Consultas para obtener lo del reporte de egresos segun el tipo
+        //Consulta para los egresos de creditos
+        const totalCreditsReportQuery = `
+            SELECT COALESCE(SUM(efectivo), 0) AS totalCredits
+            FROM creditos
+            WHERE fechaEntrega BETWEEN ? AND ?
+        `;
+        const [creditsReportResult] = await queryAsync(totalCreditsReportQuery, [startDate, endDate]);
+        const creditsReport = creditsReportResult.totalCredits;
+
+        //Consulta para obtener los egresos extra
+        const extraExpensesReportQuery = `
+            SELECT fecha, descripcion, monto
+            FROM caja
+            WHERE tipoMovimiento = 'egreso'
+            AND categoria = 'extra'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+            ORDER BY fecha ASC
+        `;
+        const extraExpensesReport = await queryAsync(extraExpensesReportQuery, [startDate, endDate]);
+
+        //Consulta para obtener los egresos de comisiones de la semana
+        const commissionExpensesReportQuery = `
+            SELECT fecha, descripcion, monto
+            FROM caja
+            WHERE tipoMovimiento = 'egreso'
+            AND categoria = 'comision'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+            ORDER BY fecha ASC
+        `;
+        const commissionExpensesReport =  await queryAsync(commissionExpensesReportQuery, [startDate, endDate]);
+
+         //Consulta para obtener la uma de egresos extra en el rango
+        const totalExtraExpensesReportQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'egreso'
+            AND categoria IN('extra', 'comision')
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraExpensesReportResult] = await queryAsync(totalExtraExpensesReportQuery, [startDate, endDate]);
+        const totalExtraExpensesReport = totalExtraExpensesReportResult.totalExtras;
         
-        //Consulta en la tabla creditos para obtener los creditos de la semana
-        const queryCreditSum = `
-        SELECT SUM(monto) AS expenses
-        FROM creditos`;
-
-        const creditResult = await queryAsync(queryCreditSum);
-
-        //Agregar la suma de creditos diarios al objeto de la consulta para el reporte semanal
-        const monthlyReport = monthlyResult.map(row => ({
-            ...row,
-            expenses: creditResult[0]?.expenses || 0
-        }));
-
-        return monthlyReport;
+        //Resultado de regreso
+        return {
+            dailyData: {
+                income: dailyTotalPayments,
+                expenses: dailyTotalCredits,
+                commissions: dailyTotalCommissions,
+                totalIncome: dailyTotalPayments + totalExtraIncome,
+                totalExpenses: dailyTotalCredits + totalExtraExpenses + dailyTotalCommissions
+            },
+            income: { //Para el reporte de ingresos
+                payments: paymentsReport,
+                transactions: extraIncomeReport,
+                total: paymentsReport + totalExtraIncomeReport
+            },expenses: { //Para el reporte de egresos
+                credits: creditsReport,
+                transactions: extraExpensesReport,
+                commissions: commissionExpensesReport,
+                total: creditsReport + totalExtraExpensesReport
+            }, cash: {
+                totalCash: (paymentsReport + totalExtraIncomeReport) - (creditsReport + totalExtraExpensesReport)
+            }
+            
+        };
 
     } catch(error) {
+        console.error('Error en getFinancialReportByPeriod:', error);
         throw error;
     }
 }
@@ -148,7 +256,19 @@ async function getDailyCredits() {
         const dd = String(today.getDate()).padStart(2, '0');
         const todayStr = `${yyyy}-${mm}-${dd}`;
 
-        const queryDaily = `SELECT idCredito, monto AS creditAmount, fechaEntrega AS date FROM ${TABLE_CREDITS} WHERE DATE(fechaEntrega) = CURDATE()`;
+        const queryDaily = `
+        SELECT
+            c.idCredito,
+            c.monto AS creditAmount,
+            c.fechaEntrega AS date,
+            c.semanas AS creditWeeks,
+            CONCAT(cl.nombre, ' ', cl.apellidoPaterno, ' ', cl.apellidoMaterno) AS client,
+            z.promotor AS promoter
+        FROM ${TABLE_CREDITS} c
+        INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+        INNER JOIN zonas z ON cl.idZona= z.idZona
+        WHERE DATE(c.fechaEntrega) = CURDATE()
+        `;
 
         const result = await queryAsync(queryDaily, [todayStr]);
         console.log('Resultado de consulta diaria: ', result);
@@ -161,7 +281,19 @@ async function getDailyCredits() {
 
 async function getWeeklyCredits() {
     try {
-        const queryWeekly = `SELECT idCredito, monto AS creditAmount, fechaEntrega AS date FROM ${TABLE_CREDITS} WHERE YEARWEEK(fechaEntrega, 1) = YEARWEEK(CURDATE(), 1)`;
+
+        const queryWeekly = `
+        SELECT
+            c.idCredito,
+            c.monto AS creditAmount,
+            c.fechaEntrega AS date,
+            c.semanas AS creditWeeks,
+            CONCAT(cl.nombre, ' ', cl.apellidoPaterno, ' ', cl.apellidoMaterno) AS client,
+            z.promotor AS promoter
+        FROM ${TABLE_CREDITS} c
+        INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+        INNER JOIN zonas z ON cl.idZona= z.idZona
+        WHERE YEARWEEK(fechaEntrega, 1) = YEARWEEK(CURDATE(), 1)`;
 
         const weeklyCredits = await queryAsync(queryWeekly);
         return weeklyCredits;
@@ -173,8 +305,22 @@ async function getWeeklyCredits() {
 
 async function getMonthlyCredits() {
     try {
-        const queryMonthly = `SELECT idCredito, monto AS creditAmount, fechaEntrega AS date FROM ${TABLE_CREDITS} WHERE MONTH(fechaEntrega) = MONTH(CURDATE())
-        AND YEAR(fechaEntrega) = YEAR(CURDATE())`;l
+
+        const queryMonthly = `
+        SELECT
+            c.idCredito,
+            c.monto AS creditAmount,
+            c.fechaEntrega AS date,
+            c.semanas AS creditWeeks,
+            CONCAT(cl.nombre, ' ', cl.apellidoPaterno, ' ', cl.apellidoMaterno) AS client,
+            z.promotor AS promoter
+        FROM ${TABLE_CREDITS} c
+        INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+        INNER JOIN zonas z ON cl.idZona= z.idZona
+        WHERE MONTH(fechaEntrega) = MONTH(CURDATE())
+        AND YEAR(fechaEntrega) = YEAR(CURDATE())`;
+        /*const queryMonthly = `SELECT idCredito, monto AS creditAmount, fechaEntrega AS date FROM ${TABLE_CREDITS} WHERE MONTH(fechaEntrega) = MONTH(CURDATE())
+        AND YEAR(fechaEntrega) = YEAR(CURDATE())`;*/
 
         const monthlyCredits = await queryAsync(queryMonthly);
         return monthlyCredits;
@@ -231,10 +377,8 @@ async function getTotalPayments(zona) {
 
 
 module.exports = {
-    getInitialAmountDaily,
-    getDailyReport,
-    getWeeklyReport,
-    getMonthlyReport,
+    saveTransaction,
+    getFinancialReportByPeriod,
     getDailyCredits,
     getWeeklyCredits,
     getMonthlyCredits,
