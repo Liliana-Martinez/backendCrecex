@@ -58,24 +58,13 @@ async function getCollectionRate(idZona) {
     //Consulta para obtener la sumatoria de "cantidadPagada" que representa lo que al final cobraron en total en la semana las promotoras
     const sumAmountPaid = `
       SELECT 
-      SUM(
-        CASE
-          WHEN p.estado IN ('incompleto', 'pagado')
-          THEN p.cantidadPagada
-          ELSE 0
-        END) AS totalCantidadPagada,
-
-      SUM(
-        CASE
-          WHEN p.estado IN ('atraso', 'pagadoAtrasado')
-          THEN p.extras
-          ELSE 0
-        END) AS totalExtras
+      SUM(cantidadPagada) AS totalCantidadPagada,
+      SUM(extras) AS totalExtras
       FROM pagos p
       INNER JOIN creditos c ON p.idCredito = c.idCredito
       INNER JOIN clientes cl ON c.idCliente = cl.idCliente
       WHERE
-        c.estado IN ('activo', 'pagado')
+        c.estado = 'activo'
         AND cl.idZona = ?
         AND p.fechaPagada BETWEEN ? AND ?
         AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;
@@ -249,7 +238,7 @@ async function getExtras(idZona) {
           INNER JOIN creditos c ON p.idCredito = c.idCredito
           INNER JOIN clientes cl ON c.idCliente = cl.idCliente
           WHERE
-            c.estado IN ('activo', 'pagado')
+            c.estado = 'activo'
             AND cl.idZona = ?
             AND p.fechaPagada BETWEEN ? AND ?
             AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;

@@ -68,7 +68,7 @@ async function getFinancialReportByPeriod(reportType) {
 
         console.log('Rango: ', startDate, endDate);
 
-        //Query para el total de pagos del día (para valor en el formulario)
+        //Query para el total de pagos del día (para valor en el formulario) ✅
         const dailyTotalPaymentsQuery = `
         SELECT
             COALESCE(SUM(
@@ -85,7 +85,19 @@ async function getFinancialReportByPeriod(reportType) {
         const [dailyResultPayments] = await queryAsync(dailyTotalPaymentsQuery, [todayFormatted, todayFormatted]);
         const dailyTotalPayments = dailyResultPayments.totalPagos;
 
-        //Query para obtener las salidas de egresos de creditos del dia
+        //Obtener la sumatoria de ingresos extra ✅
+        const totalExtraIncomeQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'ingreso'
+            AND categoria = 'extra'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraIncomeResult] = await queryAsync(totalExtraIncomeQuery, [todayFormatted, todayFormatted]);
+        const totalExtraIncome = totalExtraIncomeResult.totalExtras;
+
+        //Query para obtener las salidas de egresos de creditos del dia ✅
         const dailyTotalCreditsQuery = `
         SELECT COALESCE(SUM(efectivo), 0) AS totalCredits
         FROM creditos
@@ -94,7 +106,19 @@ async function getFinancialReportByPeriod(reportType) {
         const [dailyResultCredits] = await queryAsync(dailyTotalCreditsQuery, [todayFormatted, todayFormatted]);
         const dailyTotalCredits = dailyResultCredits.totalCredits;
 
-        //Query para obtener los egresos especificamente de las comisiones del dia
+        //Obtener la sumatoria de egresos extra✅
+        const totalExtraExpensesQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'egreso'
+            AND categoria = 'extra' 
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraExpensesResult] = await queryAsync(totalExtraExpensesQuery, [todayFormatted, todayFormatted]);
+        const totalExtraExpenses = totalExtraExpensesResult.totalExtras;
+
+        //Query para obtener los egresos especificamente de las comisiones del dia✅
         const dailyTotalCommissionsQuery = `
         SELECT COALESCE(SUM(monto), 0) AS totalCommissions
         FROM caja
@@ -104,7 +128,10 @@ async function getFinancialReportByPeriod(reportType) {
         `;
         const [dailyResultCommissions] = await queryAsync(dailyTotalCommissionsQuery, [todayFormatted, todayFormatted]);
         const dailyTotalCommissions = dailyResultCommissions.totalCommissions;
+        console.log('sumatoria de egresos de comisiones: ', dailyResultCommissions);
 
+
+        /****************************************************************************************************************************** */
         //Consultas para obtener el reporte de ingresos segun el tipo de reporte(weekly o monthly)
         //Consulta para el total de pagos (weekly, monthly)
         const totalPaymentsReportQuery = `
@@ -132,6 +159,18 @@ async function getFinancialReportByPeriod(reportType) {
             ORDER BY fecha ASC
         `;
         const extraIncomeReport = await queryAsync(extraIncomeReportQuery, [startDate, endDate]);
+
+        //Consulta para obtener la uma de ingresos extra en el rango
+        const totalExtraIncomeReportQuery = `
+            SELECT COALESCE(SUM(monto), 0) AS totalExtras
+            FROM caja
+            WHERE tipoMovimiento = 'ingreso'
+            AND categoria = 'extra'
+            AND fecha BETWEEN ? AND ?
+            AND monto > 0
+        `;
+        const [totalExtraIncomeReportResult] = await queryAsync(totalExtraIncomeReportQuery, [startDate, endDate]);
+        const totalExtraIncomeReport = totalExtraIncomeReportResult.totalExtras;
 
         //Consultas para obtener lo del reporte de egresos segun el tipo
         //Consulta para los egresos de creditos
@@ -167,46 +206,38 @@ async function getFinancialReportByPeriod(reportType) {
         `;
         const commissionExpensesReport =  await queryAsync(commissionExpensesReportQuery, [startDate, endDate]);
 
-        //Obtener totales de ingresos y egresos para sumatoria
-        const totalExtraIncomeQuery = `
-            SELECT COALESCE(SUM(monto), 0) AS totalExtras
-            FROM caja
-            WHERE tipoMovimiento = 'ingreso'
-            AND categoria = 'extra'
-            AND fecha BETWEEN ? AND ?
-            AND monto > 0
-        `;
-        const [totalExtraIncomeResult] = await queryAsync(totalExtraIncomeQuery, [startDate, endDate]);
-        const totalExtraIncome = totalExtraIncomeResult.totalExtras;
-
-        //Obtener totales de egresos extra
-        const totalExtraExpensesQuery = `
+         //Consulta para obtener la uma de egresos extra en el rango
+        const totalExtraExpensesReportQuery = `
             SELECT COALESCE(SUM(monto), 0) AS totalExtras
             FROM caja
             WHERE tipoMovimiento = 'egreso'
-            AND categoria IN('extra', 'comision') 
+            AND categoria IN('extra', 'comision')
             AND fecha BETWEEN ? AND ?
             AND monto > 0
         `;
-        const [totalExtraExpensesResult] = await queryAsync(totalExtraExpensesQuery, [startDate, endDate]);
-        const totalExtraExpenses = totalExtraExpensesResult.totalExtras;
+        const [totalExtraExpensesReportResult] = await queryAsync(totalExtraExpensesReportQuery, [startDate, endDate]);
+        const totalExtraExpensesReport = totalExtraExpensesReportResult.totalExtras;
         
         //Resultado de regreso
         return {
             dailyData: {
                 income: dailyTotalPayments,
                 expenses: dailyTotalCredits,
-                commissions: dailyTotalCommissions
+                commissions: dailyTotalCommissions,
+                totalIncome: dailyTotalPayments + totalExtraIncome,
+                totalExpenses: dailyTotalCredits + totalExtraExpenses + dailyTotalCommissions
             },
             income: { //Para el reporte de ingresos
                 payments: paymentsReport,
                 transactions: extraIncomeReport,
-                total: paymentsReport + totalExtraIncome
+                total: paymentsReport + totalExtraIncomeReport
             },expenses: { //Para el reporte de egresos
                 credits: creditsReport,
                 transactions: extraExpensesReport,
                 commissions: commissionExpensesReport,
-                total: creditsReport + totalExtraExpenses
+                total: creditsReport + totalExtraExpensesReport
+            }, cash: {
+                totalCash: (paymentsReport + totalExtraIncomeReport) - (creditsReport + totalExtraExpensesReport)
             }
             
         };
@@ -230,7 +261,7 @@ async function getDailyCredits() {
             c.idCredito,
             c.monto AS creditAmount,
             c.fechaEntrega AS date,
-            1c.semanas AS creditWeeks,
+            c.semanas AS creditWeeks,
             CONCAT(cl.nombre, ' ', cl.apellidoPaterno, ' ', cl.apellidoMaterno) AS client,
             z.promotor AS promoter
         FROM ${TABLE_CREDITS} c
