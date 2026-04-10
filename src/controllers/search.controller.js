@@ -173,7 +173,7 @@ const SearchCollectors = (nombreCompleto) => {
                    c.colonia, c.ciudad, c.telefono, c.clasificacion, c.tipoCliente, c.puntos,
                    c.trabajo, c.domicilioTrabajo, c.telefonoTrabajo,
                    c.nombreReferencia, c.domicilioReferencia, c.telefonoReferencia,
-                   z.codigoZona, z.promotora
+                   z.codigoZona, z.promotor
             FROM clientes c
             LEFT JOIN zonas z ON c.idZona = z.idZona
             WHERE CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
