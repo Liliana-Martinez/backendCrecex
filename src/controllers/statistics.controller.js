@@ -73,7 +73,7 @@ async function getFinancialReportByPeriod(reportType) {
         SELECT
             COALESCE(SUM(
                 CASE
-                    WHEN tipoPago = 'efectivo' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0)) - COALESCE(cantidadEfectivo, 0)
+                    WHEN tipoPago = 'efectivo' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0)) - COALESCE(adeudo, 0)
                     WHEN tipoPago = 'pagado' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0))
                     ELSE 0
                 END
@@ -137,7 +137,7 @@ async function getFinancialReportByPeriod(reportType) {
         const totalPaymentsReportQuery = `
             SELECT COALESCE(SUM(
             CASE
-                WHEN tipoPago = 'efectivo' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0)) - COALESCE(cantidadEfectivo, 0)
+                WHEN tipoPago = 'efectivo' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0)) - COALESCE(adeudo, 0)
                 WHEN tipoPago = 'pagado' THEN (cantidadPagada + COALESCE(extras, 0) + COALESCE(recargos, 0))
             END
             ), 0) AS totalPagos

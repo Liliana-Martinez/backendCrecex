@@ -166,6 +166,7 @@ const getClientsFromZone = (idZona) => {
           clientes
         });
       } catch (err) {
+        console.error('Error al obtener los datos: ', err);
         reject(err);
       }
     });

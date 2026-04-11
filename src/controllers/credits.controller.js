@@ -560,7 +560,7 @@ async function respuestaImprimir(idCredito) {
                 c.tipoCredito, c.idCredito, c.monto, c.fechaEntrega, c.abonoSemanal, c.semanas AS numeroSemana,
                 c.horarioEntrega, c.recargos, c.atrasos, c.efectivo, c.referencia,
                 cl.idCliente, cl.nombre, cl.apellidoPaterno, cl.apellidoMaterno,
-                z.idZona, z.promotora, z.codigoZona,
+                z.idZona, z.promotor, z.codigoZona,
                 p.fechaEsperada
             FROM creditos c
             JOIN clientes cl ON cl.idCliente = c.idCliente
