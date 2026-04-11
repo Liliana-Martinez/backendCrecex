@@ -103,7 +103,7 @@ const getClientsFromZone = (idZona) => {
         cr.monto,
         cr.cumplimiento,
         z.codigoZona,
-        z.promotora,
+        z.promotor,
         (
           SELECT COUNT(*) 
           FROM creditos 
@@ -111,7 +111,7 @@ const getClientsFromZone = (idZona) => {
             AND creditos.estado IN ('Activo', 'Pagado', 'Adicional', 'Vencido')
         ) AS numeroCreditos,
         p.numeroSemana,
-        p.cantidadEfectivo,
+        p.adeudo,
         p.tipoPago --  lo necesitamos para condicionar el valor
       FROM clientes AS c
       JOIN creditos AS cr ON c.idCliente = cr.idCliente
@@ -127,13 +127,13 @@ const getClientsFromZone = (idZona) => {
       if (error) return reject(error);
       if (!results || results.length === 0) return resolve(null);
 
-      const { codigoZona, promotora } = results[0];
+      const { codigoZona, promotor } = results[0];
 
       try {
         const clientes = await Promise.all(results.map(cliente => {
           return new Promise((res, rej) => {
             const pagosQuery = `
-              SELECT cantidad, cantidadPagada, cantidadEfectivo, tipoPago, fechaEsperada, fechaPagada, estado
+              SELECT cantidad, cantidadPagada, adeudo, tipoPago, fechaEsperada, fechaPagada, estado
               FROM pagos
               WHERE idCredito = ?
               ORDER BY fechaEsperada
@@ -142,15 +142,15 @@ const getClientsFromZone = (idZona) => {
               if (err) return rej(err);
               const { atraso, adelanto, falla } = calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
 
-              // Aplicamos la condición para cantidadEfectivo
-              let cantidadEfectivo = null;
+              // Aplicamos la condición para adeudo
+              let adeudo = null;
               if (cliente.tipoPago && cliente.tipoPago.toLowerCase() === 'efectivo') {
-                cantidadEfectivo = cliente.cantidadEfectivo;
+                adeudo = cliente.adeudo;
               }
 
               res({
                 ...cliente,
-                cantidadEfectivo, // solo si tipoPago === 'efectivo'
+                adeudo, // solo si tipoPago === 'efectivo'
                 atraso,
                 adelanto,
                 falla
@@ -161,7 +161,7 @@ const getClientsFromZone = (idZona) => {
 
         resolve({
           codigoZona,
-          promotora,
+          promotor,
           fechaSiguienteSemana,
           clientes
         });
@@ -187,7 +187,7 @@ const registrarPagos = async (pagos) => {
         await new Promise((resolve, reject) => {
           db.query(
             `UPDATE pagos 
-             SET tipoPago = ?, cantidadEfectivo = 0, fechaPagada = CURDATE()
+             SET tipoPago = ?, adeudo = 0, fechaPagada = CURDATE()
              WHERE idCredito = ? AND tipoPago = 'efectivo'`,
             [paymentType, idCredito],
             (err, result) => {
@@ -202,7 +202,7 @@ const registrarPagos = async (pagos) => {
       }
 
       const totalRecibidoHoy = monto + recargoExtra;
-      let cantidadEfectivoRegistrado = false;
+      let adeudoRegistrado = false;
 
       // 📌 Obtener todas las semanas del crédito
       const semanas = await new Promise((resolve, reject) => {
@@ -238,10 +238,10 @@ const registrarPagos = async (pagos) => {
             'pagado',
             recargoExtra,
             paymentType,
-            paymentType === 'pagado' ? 0 : (cantidadEfectivoRegistrado ? 0 : totalRecibidoHoy),
-            !cantidadEfectivoRegistrado
+            paymentType === 'pagado' ? 0 : (adeudoRegistrado ? 0 : totalRecibidoHoy),
+            !adeudoRegistrado
           );
-          cantidadEfectivoRegistrado = true;
+          adeudoRegistrado = true;
         }
 
         await actualizarCreditoAPagado(idCredito);
@@ -266,7 +266,7 @@ const registrarPagos = async (pagos) => {
         return fechaSemana.getTime() === hoySabado.getTime();
       });
 
-      if (semanaActual && !cantidadEfectivoRegistrado && paymentType === 'efectivo') {
+      if (semanaActual && !adeudoRegistrado && paymentType === 'efectivo') {
         await actualizarPago(
           semanaActual.idPago,
           semanaActual.cantidadPagada || 0,
@@ -276,7 +276,7 @@ const registrarPagos = async (pagos) => {
           totalRecibidoHoy,
           true
         );
-        cantidadEfectivoRegistrado = true;
+        adeudoRegistrado = true;
       }
 
       // 📌 Pagar semana actual
@@ -388,20 +388,20 @@ const actualizarPago = (
   nuevoEstado,
   recargoExtra = 0,
   tipoPago = 'efectivo',
-  cantidadEfectivoRecibido = 0,
+  adeudoRecibido = 0,
   esSemanaActual = false
 ) => {
   return new Promise((resolve, reject) => {
     //  Obtener datos actuales del pago
     db.query(
-      'SELECT recargos, cantidadEfectivo, tipoPago FROM pagos WHERE idPago = ?',
+      'SELECT adeudo, tipoPago FROM pagos WHERE idPago = ?',
       [idPago],
       (err, rows) => {
         if (err) return reject(err);
         if (!rows || rows.length === 0) return reject(new Error('Pago no encontrado'));
 
         const recargoActual = Number(rows[0]?.recargos || 0);
-        const cantidadEfectivoActual = Number(rows[0]?.cantidadEfectivo || 0);
+        const adeudoActual = Number(rows[0]?.adeudo || 0);
 
         //  Calcular nuevo recargo
         const nuevoRecargo = recargoActual + recargoExtra;
@@ -410,23 +410,23 @@ const actualizarPago = (
         const nuevoTipoPago = tipoPago;
 
         // Calcular nueva cantidad de efectivo
-        let nuevaCantidadEfectivo;
+        let adeudoEfectivo;
         if (tipoPago === 'pagado') {
           // Siempre reiniciar a 0 si es 'pagado'
-          nuevaCantidadEfectivo = 0;
+          nuevaadeudo = 0;
         } else if (tipoPago === 'efectivo' && esSemanaActual) {
           // Acumular efectivo solo si es efectivo y semana actual
-          nuevaCantidadEfectivo = cantidadEfectivoActual + Number(cantidadEfectivoRecibido);
+          nuevaadeudo = adeudoActual + Number(adeudoRecibido);
         } else {
           // Mantener el valor actual si no se cumple ninguna condición
-          nuevaCantidadEfectivo = cantidadEfectivoActual;
+          nuevaadeudo = adeudoActual;
         }
 
         //  Actualizar en la base de datos
         db.query(
           `UPDATE pagos 
            SET cantidadPagada = ?, 
-               cantidadEfectivo = ?, 
+               adeudo = ?, 
                fechaPagada = CURDATE(), 
                estado = ?, 
                recargos = ?, 
@@ -434,7 +434,7 @@ const actualizarPago = (
            WHERE idPago = ?`,
           [
             cantidadPagada !== null ? cantidadPagada : rows[0].cantidadPagada,
-            nuevaCantidadEfectivo,
+            nuevaadeudo,
             nuevoEstado !== null ? nuevoEstado : rows[0].estado,
             nuevoRecargo,
             nuevoTipoPago,

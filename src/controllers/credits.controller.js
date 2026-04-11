@@ -598,7 +598,7 @@ async function respuestaImprimir(idCredito) {
                 },
                 zona: {
                     idZona: r.idZona,
-                    promotora: r.promotora,
+                    promotor: r.promotor,
                     codigoZona: r.codigoZona
                 }
             });
