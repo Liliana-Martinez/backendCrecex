@@ -25,7 +25,62 @@ function formatDate(date) {
 //Guardar el ingreso/egreso en caja
 async function saveTransaction(transaction) {
     try {
-        
+        console.log('transaction: ', transaction);
+
+        const movements = [];
+
+        // 🟢 INGRESO
+        if (
+            transaction.income &&
+            transaction.income.amount &&
+            Number(transaction.income.amount) > 0
+        ) {
+            movements.push({
+                tipoMovimiento: 'ingreso',
+                categoria: 'extra',
+                monto: transaction.income.amount,
+                descripcion: transaction.income.description
+            });
+        }
+
+        // 🔴 EGRESO
+        if (
+            transaction.expense &&
+            transaction.expense.amount &&
+            Number(transaction.expense.amount) > 0
+        ) {
+            movements.push({
+                tipoMovimiento: 'egreso',
+                categoria: 'extra',
+                monto: transaction.expense.amount,
+                descripcion: transaction.expense.description
+            });
+        }
+
+        console.log('movements:', movements);
+
+        // 🗓️ Fecha actual
+        const today = new Date();
+
+        // 🧠 Query
+        const insertQuery = `
+            INSERT INTO caja (fecha, tipoMovimiento, categoria, descripcion, monto)
+            VALUES (?, ?, ?, ?, ?)
+        `;
+
+        // 🔁 Insertar cada movimiento
+        for (const m of movements) {
+            await queryAsync(insertQuery, [
+                today,
+                m.tipoMovimiento,
+                m.categoria,
+                m.descripcion,
+                m.monto
+            ]);
+        }
+
+        return { message: 'Movimientos guardados correctamente' };
+
     } catch (error) {
         throw error;
     }
@@ -205,6 +260,7 @@ async function getFinancialReportByPeriod(reportType) {
             ORDER BY fecha ASC
         `;
         const commissionExpensesReport =  await queryAsync(commissionExpensesReportQuery, [startDate, endDate]);
+        console.log('Comisiones: ', commissionExpensesReport);
 
          //Consulta para obtener la uma de egresos extra en el rango
         const totalExtraExpensesReportQuery = `
