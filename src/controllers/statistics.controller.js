@@ -379,8 +379,9 @@ async function getMonthlyCredits() {
         AND YEAR(fechaEntrega) = YEAR(CURDATE())`;*/
 
         const monthlyCredits = await queryAsync(queryMonthly);
+        console.log('Respuesta al front:', monthlyCredits);
         return monthlyCredits;
-
+        
     } catch(error) {
         throw error;
     }
