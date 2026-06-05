@@ -27,7 +27,6 @@ router.get('/cash', async (req, res) => {
         if (!reportType || !reportOptions.includes(reportType)) {
             return res.status(400).json({ message: 'Opción de reporte no válido.'});
         }
-
         //Lamar al controller
         const result =  await statistics.getFinancialReportByPeriod(reportType);
         return res.status(200).json(result);
@@ -73,19 +72,14 @@ router.get('/total-credits/month', async (req, res) => {
 //Ruta para consultar los pagos totales
 router.get('/total-payments', async (req, res) => {
     try {
-        const zona = req.query.zona;
-        console.log('Zona llegada en la ruta: ', zona);
-
-        if (!zona) {
-            return res.status(400).json({ message: 'Debe ingresar una zona '});
-        }
-
-        const result = await statistics.getTotalPayments(zona);
+        const { reportType } = req.query;
+        console.log('Tipo de reporte en el back: ', reportType);
+        const result = await statistics.getTotalPayments(reportType);
         res.status(200).json(result);
         
     } catch(error) {
-        console.error('Error al obtener los pagos por zona: ', error);
-        res.status(500).json({ message: 'Error al obtener los pagos por zona' });
+        console.error('Error al obtener el reporte: ', error);
+        return res.status(500).json({ message: 'Error al obtener el reporte.'});
     }
 });
 

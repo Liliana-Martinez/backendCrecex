@@ -24,7 +24,7 @@ router.post('/cliente', async (req, res) => {
             case 'consult':
                 result = await searchController.searchConsult(nombreCompleto);  
                 break;
-            case 'modify':
+            case 'update':
                 if (selectedOption === 'client') {
                     result = await searchController.searchModifyClient(nombreCompleto);
                 } else if (selectedOption === 'guarantorp' || selectedOption === 'guarantors') {

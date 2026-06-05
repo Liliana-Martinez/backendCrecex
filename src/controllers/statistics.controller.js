@@ -386,47 +386,104 @@ async function getMonthlyCredits() {
     }
 }
 
-async function getTotalPayments(zona) {
+async function getTotalPayments(reportType) {
   try {
-    const today = dayjs();
-    const startOfWeek = today.startOf('week').format('YYYY-MM-DD');
-    console.log('Inicio de semama: ', startOfWeek);
-    const endOfWeek = today.endOf('week').format('YYYY-MM-DD');
-    console.log('Fin de semana: ', endOfWeek);
+    const today = new Date();
+    const todayFormatted = formatDate(today);
+    let startDate;
+    let endDate;
+    let collectedAmountPercentage = 0;
+    let outstandingAmount = 0;
+    let outstandingAmountPercentage = 0;
 
-    //Consulta para obtener los pagos que hay por zona
-    const query = `
-      SELECT 
-        CONCAT(cl.nombre, ' ', cl.apellidoPaterno, ' ', cl.apellidoMaterno) AS clientName,
-        cr.monto AS creditAmount,
-        p.cantidad AS weeklyAmount,
-        p.fechaEsperada AS paymentDate
-      FROM pagos p
-      JOIN creditos cr ON p.idCredito = cr.idCredito
-      JOIN clientes cl ON cr.idCliente = cl.idCliente
-      JOIN zonas z ON cl.idZona = z.idZona
-      WHERE z.codigoZona = ?
-        AND p.fechaEsperada BETWEEN ? AND ?
+    //Calcular el rango de fechas para las consultas
+    if (reportType === 'daily') {
+        startDate = formatDate(today);
+        endDate = formatDate(today);
+    }
+
+    if (reportType === 'weekly') {
+        const day = today.getDay();
+
+        const saturday = new Date(today);
+        saturday.setDate(today.getDate() - ((day + 1) % 7));
+
+        const friday = new Date(saturday);
+        friday.setDate(saturday.getDate() + 6);
+
+        startDate = formatDate(saturday);
+        endDate = formatDate(friday);
+    }
+
+    if (reportType === 'monthly') {
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+        startDate = formatDate(firstDay);
+        endDate = formatDate(lastDay);
+    }
+
+    //Consulta para obtener el total de pagos que debe de haber durante el día
+    const dailyTotalPaymentsQuery = `
+        SELECT COALESCE(SUM(cantidad), 0) AS dailyTotalPayments
+        FROM pagos
+        WHERE fechaEsperada BETWEEN ? AND ?
     `;
+    const [dailyTotalPaymentsResult] = await queryAsync(dailyTotalPaymentsQuery, [todayFormatted, todayFormatted]);
+    const dailyTotalPayments = dailyTotalPaymentsResult.dailyTotalPayments;
+    console.log('dailyTotalPayments: ', dailyTotalPayments);
 
-    const payments = await queryAsync(query, [zona, startOfWeek, endOfWeek]);
+    //Consulta para obtener el dinero cobrado durante el dia
+    const dailyTotalCollectedAmountQuery = `
+        SELECT COALESCE(SUM(cantidadPagada), 0) AS dailyTotalCollectedAmount
+        FROM pagos
+        WHERE fechaPagada BETWEEN ? AND ?
+        AND tipoPago IN('efectivo', 'transferencia')
+    `;
+    const [dailyTotalCollectedAmountResult] = await queryAsync(dailyTotalCollectedAmountQuery, [todayFormatted, todayFormatted]);
+    const dailyTotalCollectedAmount = dailyTotalCollectedAmountResult.dailyTotalCollectedAmount;
 
-    //Consulta para obtener el total recibido de pagos en efectivo de la misma semana
-    const totalIngresosQuery = `
-        SELECT SUM(ingresosPagos) AS totalReceived
-        FROM caja
-        WHERE fecha BETWEEN ? AND ?`
-    ;
+    if (dailyTotalPayments > 0) {
+        collectedAmountPercentage = Number(((dailyTotalCollectedAmount / dailyTotalPayments) * 100).toFixed(2));
+        outstandingAmount = dailyTotalPayments - dailyTotalCollectedAmount;
+        outstandingAmountPercentage = Number(((outstandingAmount / dailyTotalPayments) * 100).toFixed(2));
+    } 
+
+    //Consultas para obtener los valores cuando el reporte es semanal o mensual
+    //Consulta para obtener el total de pagos que debe de haber durante el rango
+    const totalPaymentsQuery = `
+        SELECT COALESCE(SUM(cantidad), 0) AS totalPayments
+        FROM pagos
+        WHERE fechaEsperada BETWEEN ? AND ?`;
+    const [totalPaymentsResult] = await queryAsync(totalPaymentsQuery, [startDate, endDate]);
+    const totalPayments = totalPaymentsResult.totalPayments;
+
+    //Consulta para obtener el dinero cobrado en el rango
+    const totalCollectedAmountQuery = `
+        SELECT COALESCE(SUM(cantidadPagada), 0) AS totalCollectedAmount
+        FROM pagos
+        WHERE fechaPagada BETWEEN ? AND ?
+        AND tipoPago IN('efectivo', 'transferencia')`;
+    const [totalCollectedAmountResult] = await queryAsync(totalCollectedAmountQuery, [startDate, endDate]);
+    const totalCollectedAmount = totalCollectedAmountResult.totalCollectedAmount;
+
+    if (totalPayments > 0) {
+        collectedAmountPercentage = Number(((totalCollectedAmount / totalPayments) * 100).toFixed(2));
+        outstandingAmount = totalPayments - totalCollectedAmount;
+        outstandingAmountPercentage = Number(((outstandingAmount / totalPayments) * 100).toFixed(2));
+    }
     
-    const [ingresosResult] = await queryAsync(totalIngresosQuery, [startOfWeek, endOfWeek]);
-    const totalReceived = ingresosResult?.totalReceived || 0;
 
     return {
-        payments, 
-        totalReceived
-    };
+        summary: {
+            collectedAmount: dailyTotalCollectedAmount,
+            collectedAmountPercentage: collectedAmountPercentage,
+            outstandingAmount: outstandingAmount,
+            outstandingAmountPercentage: outstandingAmountPercentage
+        }
+    }
 
-  } catch (error) {
+} catch (error) {
     throw error;
   }
 }
