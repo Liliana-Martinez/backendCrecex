@@ -424,6 +424,9 @@ async function getTotalPayments(reportType) {
         endDate = formatDate(lastDay);
     }
 
+    console.log('primer dia de mes: ', startDate);
+    console.log('ultimo dia: ', endDate);
+
     //Consulta para obtener el total de pagos que debe de haber durante el día
     const dailyTotalPaymentsQuery = `
         SELECT COALESCE(SUM(cantidad), 0) AS dailyTotalPayments
@@ -440,6 +443,7 @@ async function getTotalPayments(reportType) {
         FROM pagos
         WHERE fechaPagada BETWEEN ? AND ?
         AND tipoPago IN('efectivo', 'transferencia')
+        AND estado IN('pagado', 'incompleto')
     `;
     const [dailyTotalCollectedAmountResult] = await queryAsync(dailyTotalCollectedAmountQuery, [todayFormatted, todayFormatted]);
     const dailyTotalCollectedAmount = dailyTotalCollectedAmountResult.dailyTotalCollectedAmount;
@@ -455,7 +459,8 @@ async function getTotalPayments(reportType) {
     const totalPaymentsQuery = `
         SELECT COALESCE(SUM(cantidad), 0) AS totalPayments
         FROM pagos
-        WHERE fechaEsperada BETWEEN ? AND ?`;
+        WHERE fechaEsperada BETWEEN ? AND ?
+        `;
     const [totalPaymentsResult] = await queryAsync(totalPaymentsQuery, [startDate, endDate]);
     const totalPayments = totalPaymentsResult.totalPayments;
 
@@ -464,7 +469,8 @@ async function getTotalPayments(reportType) {
         SELECT COALESCE(SUM(cantidadPagada), 0) AS totalCollectedAmount
         FROM pagos
         WHERE fechaPagada BETWEEN ? AND ?
-        AND tipoPago IN('efectivo', 'transferencia')`;
+        AND tipoPago IN('efectivo', 'transferencia')
+        AND estado IN('pagado', 'incompleto', 'atraso', 'pagadoAtrasado')`;
     const [totalCollectedAmountResult] = await queryAsync(totalCollectedAmountQuery, [startDate, endDate]);
     const totalCollectedAmount = totalCollectedAmountResult.totalCollectedAmount;
 
