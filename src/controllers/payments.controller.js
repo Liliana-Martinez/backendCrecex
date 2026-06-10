@@ -259,7 +259,7 @@ const getClientsFromZone = (
       .split('T')[0];
   return new Promise((resolve, reject) => {
     const query = `
-      SELECT 
+      SELECT
         CONCAT_WS(
           ' ',
           c.nombre,
@@ -269,6 +269,7 @@ const getClientsFromZone = (
         c.idCliente,
         c.clasificacion,
         cr.idCredito,
+        cr.tipoCredito,
         cr.fechaEntrega,
         cr.fechaVencimiento,
         cr.abonoSemanal AS montoSemanal,
@@ -277,15 +278,10 @@ const getClientsFromZone = (
         z.codigoZona,
         z.promotor,
         (
-          SELECT COUNT(*) 
-          FROM creditos 
+          SELECT COUNT(*)
+          FROM creditos
           WHERE creditos.idCliente = c.idCliente
-          AND creditos.estado IN (
-            'Activo',
-            'Pagado',
-            'Adicional',
-            'Vencido'
-          )
+          AND LOWER(creditos.tipoCredito) <> 'adicional'
         ) AS numeroCreditos,
         p.numeroSemana,
         p.adeudo,
@@ -293,7 +289,7 @@ const getClientsFromZone = (
       FROM clientes AS c
       JOIN creditos AS cr
         ON c.idCliente = cr.idCliente
-      LEFT JOIN pagos AS p 
+      LEFT JOIN pagos AS p
         ON cr.idCredito = p.idCredito
         AND p.fechaEsperada = ?
       JOIN zonas AS z
@@ -323,7 +319,10 @@ const getClientsFromZone = (
             await Promise.all(
               results.map(cliente => {
                 return new Promise(
-                  (resolveCliente, rejectCliente) => {
+                  (
+                    resolveCliente,
+                    rejectCliente
+                  ) => {
                     const pagosQuery = `
                       SELECT
                         cantidad,
@@ -337,6 +336,7 @@ const getClientsFromZone = (
                       WHERE idCredito = ?
                       ORDER BY fechaEsperada
                     `;
+
                     db.query(
                       pagosQuery,
                       [cliente.idCredito],
@@ -359,8 +359,7 @@ const getClientsFromZone = (
                         let adeudo = null;
                         if (
                           cliente.tipoPago &&
-                          cliente.tipoPago
-                            .toLowerCase() ===
+                          cliente.tipoPago.toLowerCase() ===
                             'efectivo'
                         ) {
                           adeudo =
@@ -368,6 +367,12 @@ const getClientsFromZone = (
                         }
                         resolveCliente({
                           ...cliente,
+                          numeroCreditos:
+                            cliente.tipoCredito &&
+                            cliente.tipoCredito.toLowerCase() ===
+                              'adicional'
+                              ? 'AD'
+                              : cliente.numeroCreditos,
                           adeudo,
                           atraso,
                           adelanto,
