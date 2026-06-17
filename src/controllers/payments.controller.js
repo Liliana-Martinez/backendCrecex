@@ -449,6 +449,77 @@ const registrarPagos = async (pagos) => {
         );
         continue;
       }
+      const pagoConAdeudo = semanas.find(
+      s => Number(s.adeudo || 0) > 0
+      );
+      console.log('paymentType:', paymentType);
+console.log('monto:', monto);
+
+// Pago de adeudo de la semana actual
+if (
+  paymentType === 'pagado' &&
+  semanaActual &&
+  Number(semanaActual.adeudo || 0) > 0
+) {
+
+  console.log('ENTRO A PAGAR ADEUDO');
+
+  console.log(
+    'Semana actual:',
+    {
+      idPago: semanaActual.idPago,
+      adeudo: semanaActual.adeudo,
+      tipoPago: semanaActual.tipoPago
+    }
+  );
+
+  const adeudoActual =
+    Number(semanaActual.adeudo || 0);
+
+  const nuevoAdeudo =
+    Math.max(
+      0,
+      adeudoActual - monto
+    );
+
+  const tipoPagoFinal =
+    nuevoAdeudo === 0
+      ? 'pagado'
+      : semanaActual.tipoPago;
+
+  console.log({
+    adeudoActual,
+    montoPagado: monto,
+    nuevoAdeudo,
+    tipoPagoFinal
+  });
+
+  const resultado =
+    await queryAsync(
+      `
+      UPDATE pagos
+      SET adeudo = ?,
+          tipoPago = ?
+      WHERE idPago = ?
+      `,
+      [
+        nuevoAdeudo,
+        tipoPagoFinal,
+        semanaActual.idPago
+      ]
+    );
+
+  console.log(
+    'Resultado UPDATE:',
+    resultado
+  );
+
+  await actualizarClasificacionCredito(
+    idCredito
+  );
+
+  continue;
+}
       // Registrar recargos
       if (semanaActual) {
         await actualizarPago(
@@ -751,6 +822,7 @@ const actualizarCreditoAPagado = async (
       SET estado = ?
       WHERE idCredito = ?
     `;
+    
     return await queryAsync(query, [
       'Pagado',
       idCredito
