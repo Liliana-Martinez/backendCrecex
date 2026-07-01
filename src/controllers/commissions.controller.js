@@ -42,7 +42,9 @@ async function getCollectionRate(idZona) {
     let collectionRate = 0;
     let commissionPercentage = 0;
     let percentage = 0;
-
+    const getPromoter = `SELECT promotor FROM zonas WHERE idZona = ?`;
+    const resultPromoter = await queryAsync(getPromoter, [idZona]);
+    const promoter = resultPromoter[0]?.promotor || '';
     //Consulta para obtener la sumatoria de la columna "cantidad" de la tabla pagos (que hay en el rango sabado-viernes)
     const sumAmount = `
       SELECT SUM(cantidad) AS totalCantidad
@@ -69,7 +71,7 @@ async function getCollectionRate(idZona) {
         AND cl.idZona = ?
         AND p.fechaPagada BETWEEN ? AND ?
         AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;
-
+    
     const resultSumAmountPaid = await queryAsync(sumAmountPaid, [idZona,startDate,endDate]);
     const amountPaid =
       Number(resultSumAmountPaid[0]?.totalCantidadPagada) || 0;
@@ -121,8 +123,11 @@ async function getCollectionRate(idZona) {
       totalCollected: totalPaid,          // Lo que realmente se cobró
       collectionPercentage: percentage,   // % al que cerró la promotora
       commissionPercentage,               // % de comisión que se le pagaraa
-      collectionRate                      // Comisión, dinerito :)
+      collectionRate,                     // Comisión, dinerito :)
+      promoter
     };
+
+
 
   } catch (error) {
     console.log("Error al obtener los gastos de cobranza.", error);
