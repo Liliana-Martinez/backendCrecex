@@ -73,15 +73,120 @@ function esMismaSemana(fecha1, fecha2) {
   );
 }
 
+//porcentaje de comisiones
+const getCollectionRate = async (idZona) => {
+  const startDate = obtenerSabadoAnterior()
+    .toISOString()
+    .split('T')[0];
+  const endDate = obtenerSiguienteSabado()
+    .toISOString()
+    .split('T')[0];
+  try {
+    // LO QUE SE DEBIÓ COBRAR EN LA SEMANA ACTUAL
+    const sumAmountQuery = `
+      SELECT SUM(p.cantidad) AS totalCantidad
+      FROM pagos p
+      INNER JOIN creditos c ON p.idCredito = c.idCredito
+      INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+      WHERE 
+        c.estado = 'activo'
+        AND cl.idZona = ?
+        AND p.estado NOT IN ('adelantado', 'adelantadoIncompleto')
+        AND p.fechaEsperada >= ?
+        AND p.fechaEsperada < ?
+    `;
+    const resultSumAmount = await queryAsync(sumAmountQuery, [
+      idZona,
+      startDate,
+      endDate
+    ]);
+    const sumAmount = Number(resultSumAmount?.[0]?.totalCantidad ?? 0);
+    // LO REALMENTE COBRADO
+    const sumAmountPaidQuery = `
+      SELECT 
+        SUM(
+          CASE 
+            WHEN p.estado IN ('pagado', 'incompleto', 'adelantadoIncompleto')
+            THEN p.cantidadPagada
+            ELSE 0
+          END
+        ) AS totalPagado,
+        SUM(
+          CASE 
+            WHEN p.estado IN ('atraso', 'pagadoAtrasado')
+            THEN p.extras
+            ELSE 0
+          END
+        ) AS totalExtras
+      FROM pagos p
+      INNER JOIN creditos c ON p.idCredito = c.idCredito
+      INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+      WHERE 
+        c.estado = 'activo'
+        AND cl.idZona = ?
+        AND (
+          (
+            p.estado IN ('pagado', 'incompleto', 'adelantadoIncompleto')
+            AND p.fechaEsperada >= ?
+            AND p.fechaEsperada < ?
+          )OR(
+            p.estado IN ('atraso', 'pagadoAtrasado')
+            AND p.fechaPagada >= ?
+            AND p.fechaPagada < ?
+          )
+        )
+    `;
+    const resultSumAmountPaid = await queryAsync(sumAmountPaidQuery, [
+      idZona,
+      startDate,
+      endDate,
+      startDate,
+      endDate
+    ]);
+
+    const amountPaid = Number(
+      resultSumAmountPaid?.[0]?.totalPagado ?? 0
+    );
+
+    const extras = Number(
+      resultSumAmountPaid?.[0]?.totalExtras ?? 0
+    );
+
+    const sumAmountPaid = amountPaid + extras;
+
+    console.log('Cobranza:', {
+      startDate,
+      endDate,
+      sumAmount,
+      amountPaid,
+      extras,
+      sumAmountPaid
+    });
+
+    return {
+      sumAmount,
+      sumAmountPaid
+    };
+
+  } catch (error) {
+    console.log('Error al obtener sumas de cobranza.', error);
+    throw error;
+  }
+};
 // Obtener semanas/pagos de un crédito
 async function obtenerSemanasCredito(idCredito) {
-  const query = `
-    SELECT *
-    FROM pagos
-    WHERE idCredito = ?
-    ORDER BY numeroSemana ASC
-  `;
-  return await queryAsync(query, [idCredito]);
+  try {
+    const query = `
+      SELECT *
+      FROM pagos
+      WHERE idCredito = ?
+      ORDER BY numeroSemana ASC
+    `;
+    return await queryAsync(query, [idCredito]);
+  } catch (error) {
+    console.error('Error al obtener semanas del crédito:', error);
+    throw error;
+  }
 }
 // Obtener pagos completos de un crédito
 async function obtenerPagosCredito(idCredito) {
@@ -242,154 +347,124 @@ function calcularEstadoDePagosOrdenado(
   };
 }
 //Trae los datos de los clientes por zona
-const getClientsFromZone = (
-  idZona
-) => {
-  console.log(
-    'ID en el controller:',
-    idZona
-  );
-  const fechaEsperada =
-    obtenerSabadoAnterior()
-      .toISOString()
-      .split('T')[0];
-  const fechaSiguienteSemana =
-    obtenerSiguienteSabado()
-      .toISOString()
-      .split('T')[0];
+const getClientsFromZone = (idZona) => {
+  console.log('ID en el controller:', idZona);
+  const fechaEsperada = obtenerSabadoAnterior()
+    .toISOString()
+    .split('T')[0];
+  const fechaSiguienteSemana = obtenerSiguienteSabado()
+    .toISOString()
+    .split('T')[0];
   return new Promise((resolve, reject) => {
-    const query = `
-      SELECT 
-        CONCAT_WS(
-          ' ',
-          c.nombre,
-          c.apellidoPaterno,
-          c.apellidoMaterno
-        ) AS nombreCompleto,
-        c.idCliente,
-        c.clasificacion,
-        cr.idCredito,
-        cr.fechaEntrega,
-        cr.fechaVencimiento,
-        cr.abonoSemanal AS montoSemanal,
-        cr.monto,
-        cr.cumplimiento,
-        z.codigoZona,
-        z.promotor,
-        (
-          SELECT COUNT(*) 
-          FROM creditos 
-          WHERE creditos.idCliente = c.idCliente
-          AND creditos.estado IN (
-            'Activo',
-            'Pagado',
-            'Adicional',
-            'Vencido'
-          )
-        ) AS numeroCreditos,
-        p.numeroSemana,
-        p.adeudo,
-        p.tipoPago
-      FROM clientes AS c
-      JOIN creditos AS cr
-        ON c.idCliente = cr.idCliente
-      LEFT JOIN pagos AS p 
-        ON cr.idCredito = p.idCredito
-        AND p.fechaEsperada = ?
-      JOIN zonas AS z
-        ON c.idZona = z.idZona
-      WHERE c.idZona = ?
-      AND cr.estado = 'Activo'
-    `;
     db.query(
-      query,
+      `
+        SELECT
+          CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) AS nombreCompleto,
+          c.idCliente,
+          c.clasificacion,
+          cr.idCredito,
+          cr.tipoCredito,
+          cr.fechaEntrega,
+          cr.fechaVencimiento,
+          cr.abonoSemanal AS montoSemanal,
+          cr.monto,
+          cr.cumplimiento,
+          z.codigoZona,
+          z.promotor,
+          (
+            SELECT COUNT(*)
+            FROM creditos
+            WHERE creditos.idCliente = c.idCliente
+            AND LOWER(creditos.tipoCredito) <> 'adicional'
+          ) AS numeroCreditos,
+          p.numeroSemana,
+          p.adeudo,
+          p.tipoPago
+        FROM clientes AS c
+        JOIN creditos AS cr
+          ON c.idCliente = cr.idCliente
+        LEFT JOIN pagos AS p
+          ON cr.idCredito = p.idCredito
+          AND p.fechaEsperada = ?
+        JOIN zonas AS z
+          ON c.idZona = z.idZona
+        WHERE c.idZona = ?
+        AND cr.estado = 'Activo'
+      `,
       [fechaEsperada, idZona],
       async (error, results) => {
-        if (error) {
-          return reject(error);
-        }
-        if (
-          !results ||
-          results.length === 0
-        ) {
+        if (error) return reject(error);
+
+        if (!results || results.length === 0) {
           return resolve(null);
         }
-        const {
-          codigoZona,
-          promotor
-        } = results[0];
+        const { codigoZona, promotor } = results[0];
         try {
-          const clientes =
-            await Promise.all(
-              results.map(cliente => {
-                return new Promise(
-                  (resolveCliente, rejectCliente) => {
-                    const pagosQuery = `
-                      SELECT
-                        cantidad,
-                        cantidadPagada,
-                        adeudo,
-                        tipoPago,
-                        fechaEsperada,
-                        fechaPagada,
-                        estado
-                      FROM pagos
-                      WHERE idCredito = ?
-                      ORDER BY fechaEsperada
-                    `;
-                    db.query(
-                      pagosQuery,
-                      [cliente.idCredito],
-                      (
-                        err,
-                        pagos
-                      ) => {
-                        if (err) {
-                          return rejectCliente(err);
-                        }
-                        const {
-                          atraso,
-                          adelanto,
-                          falla
-                        } =
-                          calcularEstadoDePagosOrdenado(
-                            pagos,
-                            fechaEsperada
-                          );
-                        let adeudo = null;
-                        if (
-                          cliente.tipoPago &&
-                          cliente.tipoPago
-                            .toLowerCase() ===
-                            'efectivo'
-                        ) {
-                          adeudo =
-                            cliente.adeudo;
-                        }
-                        resolveCliente({
-                          ...cliente,
-                          adeudo,
-                          atraso,
-                          adelanto,
-                          falla
-                        });
-                      }
-                    );
+          //  CLIENTES (NO SE TOCA)
+          const clientes = await Promise.all(
+            results.map(cliente => {
+              return new Promise((resolveCliente, rejectCliente) => {
+
+                const pagosQuery = `
+                  SELECT
+                    cantidad,
+                    cantidadPagada,
+                    adeudo,
+                    tipoPago,
+                    fechaEsperada,
+                    fechaPagada,
+                    estado
+                  FROM pagos
+                  WHERE idCredito = ?
+                  ORDER BY fechaEsperada
+                `;
+                db.query(pagosQuery, [cliente.idCredito], (err, pagos) => {
+                  if (err) return rejectCliente(err);
+                  const { atraso, adelanto, falla } =
+                    calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
+                  let adeudo = null;
+                  if (cliente.tipoPago?.toLowerCase() === 'efectivo') {
+                    adeudo = cliente.adeudo;
                   }
-                );
-              })
-            );
+                  resolveCliente({
+                    ...cliente,
+                    numeroCreditos:
+                      cliente.tipoCredito?.toLowerCase() === 'adicional'
+                        ? 'AD'
+                        : cliente.numeroCreditos,
+                    adeudo,
+                    atraso,
+                    adelanto,
+                    falla
+                  });
+                });
+              });
+            })
+          );
+          //  collectionRate envia frony
+          let collectionRate = {
+            sumAmount: 0,
+            sumAmountPaid: 0
+          };
+          try {
+            const result = await getCollectionRate(idZona);
+            collectionRate = {
+              sumAmount: result?.sumAmount ?? 0,
+              sumAmountPaid: result?.sumAmountPaid ?? 0
+            };
+          } catch (error) {
+            console.error('Error al calcular collectionRate:', error);
+          }
+          //  RESPUESTA FINAL
           resolve({
             codigoZona,
             promotor,
             fechaSiguienteSemana,
-            clientes
+            clientes,
+            collectionRate
           });
         } catch (err) {
-          console.error(
-            'Error al obtener los datos:',
-            err
-          );
+          console.error('Error procesando clientes:', err);
           reject(err);
         }
       }
@@ -444,6 +519,77 @@ const registrarPagos = async (pagos) => {
         );
         continue;
       }
+      const pagoConAdeudo = semanas.find(
+      s => Number(s.adeudo || 0) > 0
+      );
+      console.log('paymentType:', paymentType);
+console.log('monto:', monto);
+
+// Pago de adeudo de la semana actual
+if (
+  paymentType === 'pagado' &&
+  semanaActual &&
+  Number(semanaActual.adeudo || 0) > 0
+) {
+
+  console.log('ENTRO A PAGAR ADEUDO');
+
+  console.log(
+    'Semana actual:',
+    {
+      idPago: semanaActual.idPago,
+      adeudo: semanaActual.adeudo,
+      tipoPago: semanaActual.tipoPago
+    }
+  );
+
+  const adeudoActual =
+    Number(semanaActual.adeudo || 0);
+
+  const nuevoAdeudo =
+    Math.max(
+      0,
+      adeudoActual - monto
+    );
+
+  const tipoPagoFinal =
+    nuevoAdeudo === 0
+      ? 'pagado'
+      : semanaActual.tipoPago;
+
+  console.log({
+    adeudoActual,
+    montoPagado: monto,
+    nuevoAdeudo,
+    tipoPagoFinal
+  });
+
+  const resultado =
+    await queryAsync(
+      `
+      UPDATE pagos
+      SET adeudo = ?,
+          tipoPago = ?
+      WHERE idPago = ?
+      `,
+      [
+        nuevoAdeudo,
+        tipoPagoFinal,
+        semanaActual.idPago
+      ]
+    );
+
+  console.log(
+    'Resultado UPDATE:',
+    resultado
+  );
+
+  await actualizarClasificacionCredito(
+    idCredito
+  );
+
+  continue;
+}
       // Registrar recargos
       if (semanaActual) {
         await actualizarPago(
@@ -746,6 +892,7 @@ const actualizarCreditoAPagado = async (
       SET estado = ?
       WHERE idCredito = ?
     `;
+    
     return await queryAsync(query, [
       'Pagado',
       idCredito

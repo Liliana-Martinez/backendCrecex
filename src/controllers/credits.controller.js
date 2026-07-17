@@ -1,6 +1,7 @@
 const db = require('../db');
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
+//
 
 const createNewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, modulo, atrasos } = req.body;
@@ -175,8 +176,6 @@ const createNewCredit = (req, res) => {
         });
     }
 };
-
-
 const createRenewCredit = (req, res) => {
     const { idCliente, monto, semanas, horarioEntrega, recargos, atrasos } = req.body;
 
@@ -209,6 +208,7 @@ const createRenewCredit = (req, res) => {
         SELECT idCredito, semanas AS semanasTotales, abonoSemanal, estado
         FROM creditos
         WHERE idCliente = ?
+        AND tipoCredito <> 'adicional'
         ORDER BY fechaEntrega DESC
         LIMIT 1;
     `;
@@ -220,6 +220,7 @@ const createRenewCredit = (req, res) => {
         }
 
         const creditoActual = result[0];
+        console.log('creditoActual:', creditoActual);
         const idCreditoAnterior = creditoActual.idCredito;
         const semanasTotales = creditoActual.semanasTotales;
         const abonoAnterior = creditoActual.abonoSemanal;
@@ -263,15 +264,17 @@ const createRenewCredit = (req, res) => {
                 const querySemanasPagadas = `
                     SELECT COUNT(*) AS semanasPagadas
                     FROM pagos
-                    WHERE idCredito = ? AND estado = 'Pagado', 'Adelantado'
+                    WHERE idCredito = ?
+                    AND estado IN ('pagado', 'adelantado', 'pagadoAtrasado')
                 `;
 
                 db.query(querySemanasPagadas, [idCreditoAnterior], (err4, pagadasRows) => {
+                    console.log('idCreditoAnterior:', idCreditoAnterior);
+
                     if (err4) return res.status(500).json({ error: true, message: 'Error al contar semanas pagadas' });
 
                     const semanasPagadas = pagadasRows[0].semanasPagadas;
                     const semanasMinimas = semanasInt === 12 ? 10 : 14;
-
                     if (semanasPagadas < semanasMinimas) {
                         return res.status(400).json({
                             error: true,
@@ -366,11 +369,27 @@ const createRenewCredit = (req, res) => {
 
                                     const updatePagosAnteriores = `
                                         UPDATE pagos
-                                        SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = 'Pagado'
-                                        WHERE idCredito = ? AND estado = 'Pendiente'
+                                        SET cantidadPagada = ?, fechaPagada = CURDATE(), estado = 'pagado'
+                                        WHERE idCredito = ? AND estado = 'pendiente'
                                         ORDER BY numeroSemana
                                         LIMIT ?
                                     `;
+                                    const updateAdelantos = `
+                                        UPDATE pagos
+                                        SET fechaPagada = CURDATE()
+                                        WHERE idCredito = ?
+                                        AND estado = 'adelantado'
+                                    `;
+                                    db.query(updateAdelantos, [idCreditoAnterior], (errAdelanto) => {
+                                        if (errAdelanto) {
+                                            console.error('Error al actualizar fecha de adelantos:', errAdelanto);
+                                        return res.status(500).json({
+                                        error: true,
+                                        message: 'Error al actualizar los adelantos'
+                                        });
+                                        }
+
+                                    });
 
                                     db.query(updatePagosAnteriores, [abonoAnterior, idCreditoAnterior, semanasRestantes], (err4) => {
                                         if (err4) {
@@ -552,7 +571,6 @@ const createAdditionalCredit = (req, res) => {
         });
     });
 };
-
 async function respuestaImprimir(idCredito) {
     return new Promise((resolve, reject) => {
         const query = `

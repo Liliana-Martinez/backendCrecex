@@ -39,27 +39,30 @@ const getCommissionesByZone = async (idZona) => {
 //Funcion para calcular la cantidad correspondiente al porcentaje de cobranza
 async function getCollectionRate(idZona) {
   try {
-
-    let collectionRate = 0; //Variable para guardar el total de "Gastos de cobranza" que gano la promotora
-
+    let collectionRate = 0;
+    let commissionPercentage = 0;
+    let percentage = 0;
+    const getPromoter = `SELECT promotor FROM zonas WHERE idZona = ?`;
+    const resultPromoter = await queryAsync(getPromoter, [idZona]);
+    const promoter = resultPromoter[0]?.promotor || '';
     //Consulta para obtener la sumatoria de la columna "cantidad" de la tabla pagos (que hay en el rango sabado-viernes)
     const sumAmount = `
-      SELECT SUM(cantidad) AS totalCantidad 
-      FROM pagos p 
+      SELECT SUM(cantidad) AS totalCantidad
+      FROM pagos p
       INNER JOIN creditos c ON p.idCredito = c.idCredito
       INNER JOIN clientes cl ON c.idCliente = cl.idCliente
-      WHERE 
-        c.estado = 'activo' 
+      WHERE
+        c.estado = 'activo'
         AND cl.idZona = ?
-        AND p.fechaEsperada BETWEEN ? AND ?`; 
-    const resultSumAmount = await queryAsync(sumAmount, [idZona, startDate, endDate]);
-    const total = resultSumAmount[0]?.totalCantidad || 0;
+        AND p.fechaEsperada BETWEEN ? AND ?`;
+    const resultSumAmount = await queryAsync(sumAmount, [idZona,startDate,endDate]);
+    const total = Number(resultSumAmount[0]?.totalCantidad) || 0;
 
     //Consulta para obtener la sumatoria de "cantidadPagada" que representa lo que al final cobraron en total en la semana las promotoras
     const sumAmountPaid = `
-      SELECT 
-      SUM(cantidadPagada) AS totalCantidadPagada,
-      SUM(extras) AS totalExtras
+      SELECT
+        SUM(cantidadPagada) AS totalCantidadPagada,
+        SUM(extras) AS totalExtras
       FROM pagos p
       INNER JOIN creditos c ON p.idCredito = c.idCredito
       INNER JOIN clientes cl ON c.idCliente = cl.idCliente
@@ -68,47 +71,67 @@ async function getCollectionRate(idZona) {
         AND cl.idZona = ?
         AND p.fechaPagada BETWEEN ? AND ?
         AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;
-
-    const resultSumAmountPaid = await queryAsync(sumAmountPaid, [idZona, startDate, endDate]);
-    const amountPaid = resultSumAmountPaid[0]?.totalCantidadPagada || 0;
-    const extras = resultSumAmountPaid[0]?.totalExtras || 0;
+    
+    const resultSumAmountPaid = await queryAsync(sumAmountPaid, [idZona,startDate,endDate]);
+    const amountPaid =
+      Number(resultSumAmountPaid[0]?.totalCantidadPagada) || 0;
+    const extras =
+      Number(resultSumAmountPaid[0]?.totalExtras) || 0;
     const totalPaid = amountPaid + extras;
-    //const { totalCantidad, totalCantidadPagada } = rows[0];
-    console.log('Consulta para obtener las sumas: ', resultSumAmountPaid);
-    console.log('amountPaid: ', amountPaid);
-    console.log('extras: ', extras);
+    console.log("Consulta para obtener las sumas:", resultSumAmountPaid);
+    console.log("Total esperado:", total);
+    console.log("Total cobrado:", totalPaid);
 
     //comparar el resultado de "cantidad" con "cantidadPagada" para obtener los porcentajes
-    if (totalPaid >= total) { //Es decir, 100% o más
-      collectionRate = (totalPaid * 8) / 100;
-    } else {
+    if (total > 0) {
       //Conocer primero el porcentaje de lo que se entrego
-      const percentage = ((totalPaid * 100) / total).toFixed(2);
-      //Una vez conocido el % ver los rangos para obtener el porcentaje de cobranza
-      if (percentage >= 90 && percentage <= 99) {
-        collectionRate =  (totalPaid * 7) / 100;
-      } else if (percentage >= 80 && percentage <= 89) {
-        collectionRate = (totalPaid * 6) / 100;
-      } else if (percentage >= 70 && percentage <= 79) {
-        collectionRate = (totalPaid * 5) / 100;
-      } else if (percentage >= 60 && percentage <= 69) {
-        collectionRate = (totalPaid * 4) / 100;
-      } else if (percentage >= 50 && percentage <= 59) {
-        collectionRate = (totalPaid * 3) / 100;
-      } else if (percentage >= 40 && percentage <= 49) {
-        collectionRate = (totalPaid * 2) / 100;
-      } else if (percentage >= 30 && percentage <= 39) {
-        collectionRate = (totalPaid * 1) / 100;
-      } else {
-        collectionRate = 0;
-      }
+      percentage = Number(((totalPaid * 100) / total).toFixed(2));
     }
+    //Una vez conocido el % ver los rangos para obtener el porcentaje de cobranza
+    if (percentage >= 100) {
+      commissionPercentage = 8;
+    } else if (percentage >= 90) {
+      commissionPercentage = 7;
+    } else if (percentage >= 80) {
+      commissionPercentage = 6;
+    } else if (percentage >= 70) {
+      commissionPercentage = 5;
+    } else if (percentage >= 60) {
+      commissionPercentage = 4;
+    } else if (percentage >= 50) {
+      commissionPercentage = 3;
+    } else if (percentage >= 40) {
+      commissionPercentage = 2;
+    } else if (percentage >= 30) {
+      commissionPercentage = 1;
+    } else {
+      commissionPercentage = 0;
+    }
+    // Calcular la comisión
+    collectionRate = Number(
+      ((totalPaid * commissionPercentage) / 100).toFixed(2)
+    );
+    console.log({
+      totalExpected: total,
+      totalCollected: totalPaid,
+      collectionPercentage: percentage,
+      commissionPercentage,
+      collectionRate,
+    });
+    return {
+      totalExpected: total,               // Lo que se debía cobrar
+      totalCollected: totalPaid,          // Lo que realmente se cobró
+      collectionPercentage: percentage,   // % al que cerró la promotora
+      commissionPercentage,               // % de comisión que se le pagaraa
+      collectionRate,                     // Comisión, dinerito :)
+      promoter
+    };
 
-    console.log('Gasto de cobranza: ', collectionRate);
-    return collectionRate;
-  } catch(error) {
-    console.log('Error al obtener los gastos de cobranza.', error);
-    throw error
+
+
+  } catch (error) {
+    console.log("Error al obtener los gastos de cobranza.", error);
+    throw error;
   }
 }
 
