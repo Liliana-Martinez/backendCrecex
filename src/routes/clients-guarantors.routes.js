@@ -8,11 +8,11 @@ router.post('/add/client', async (req, res) => {
     try {
         console.log(req.body);
         const clientData = req.body;
-        const garantias = clientData.garantias ? Object.values(clientData.garantias) : [];
+        const garantias = clientData.collateral ? Object.values(clientData.collateral) : [];
         console.log('Garantias del cliente: ', garantias);
 
         //Insertar al cliente 
-        const result = await clientGuarantor.insert(clientData);
+        const result = await clientGuarantor.createClient(clientData);
         const clientId = result.insertId;
         console.log('Valir del ID: ', clientId);
 
@@ -40,10 +40,11 @@ router.post('/add/guarantor', async (req, res) => {
     try {
         console.log('Datos del front: ', req.body);
         const guarantorData = req.body;
+        console.log('garantias del cliente: ', guarantorData);
         const garantias = Object.values(guarantorData.garantias);
 
         //Insertar el aval
-        const result = await clientGuarantor.insertGuarantor(guarantorData);
+        const result = await clientGuarantor.createGuarantor(guarantorData);
         avalId = result.insertId;
 
         //Insertar garantias

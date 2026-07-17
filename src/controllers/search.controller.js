@@ -1,3 +1,4 @@
+const { response } = require('express');
 const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
@@ -398,6 +399,8 @@ async function searchModifyClient(nombreCompleto) {
 
 async function searchModifyGuarantor(nombreCompleto) {
     try {
+        console.log('Dentro del buscador de avales del cliente');
+        
         const formattedName = `%${nombreCompleto.trim()}%`;
 
         //Buscar el id del nombre del cliente que llegó
@@ -409,7 +412,7 @@ async function searchModifyGuarantor(nombreCompleto) {
         ;
         const idClientResult = await queryAsync(queryIdClient, [formattedName]);
         if (idClientResult.length === 0) {
-            return res.status(404).json({ message: 'Cliente no encontrado' });
+            throw new Error ('Cliente no encontrado');
         }
         const idClient = idClientResult[0].idCliente;
 

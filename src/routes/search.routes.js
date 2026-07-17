@@ -27,7 +27,7 @@ router.post('/cliente', async (req, res) => {
             case 'update':
                 if (selectedOption === 'client') {
                     result = await searchController.searchModifyClient(nombreCompleto);
-                } else if (selectedOption === 'guarantorp' || selectedOption === 'guarantors') {
+                } else if (selectedOption === 'primaryGuarantor' || selectedOption === 'secondaryGuarantor') {
                     result = await searchController.searchModifyGuarantor(nombreCompleto);
                 } 
         }

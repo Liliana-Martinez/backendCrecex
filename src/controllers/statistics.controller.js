@@ -318,6 +318,7 @@ async function getDailyCredits() {
             c.monto AS creditAmount,
             c.fechaEntrega AS date,
             c.semanas AS creditWeeks,
+            c.abonoSemanal AS weeklyPayment
             CONCAT(cl.nombre, ' ', cl.apellidoPaterno, ' ', cl.apellidoMaterno) AS client,
             z.promotor AS promoter
         FROM ${TABLE_CREDITS} c
