@@ -172,7 +172,7 @@ async function getCollectionExpenses(idZona) {
   console.log('recargos de la tabla creditos: ', paymentSurcharges);
 
   collectionExpenses = creditSurcharges + paymentSurcharges;
-
+  
   return collectionExpenses;
 }
 
