@@ -16,12 +16,13 @@ return new Promise((resolve, reject) => {
 }
 
 //insertar los datos personales del cliente
-async function createClient(clientData) {
+async function createClient (personalData) {
         try {
+            console.log('datos del cliente dentro del controller: ', personalData);
             //Validar si el cliente existe
             const searchClientQuery = `SELECT idCliente FROM ${TABLE_CLIENTS} WHERE nombre = ? AND apellidoPaterno = ? AND apellidoMaterno = ?`;
 
-            const searchClientResult = await queryAsync(searchClientQuery, [clientData.name, clientData.paternalLn, clientData.maternalLn]);
+            const searchClientResult = await queryAsync(searchClientQuery, [personalData.name, personalData.paternalLn, personalData.maternalLn]);
 
             if (searchClientResult.length > 0) {
                 throw new Error('El cliente ya existe.');
@@ -29,91 +30,74 @@ async function createClient(clientData) {
 
             //Insertar los datos del cliente si no existe
             const insertClientQuery = `INSERT INTO ${TABLE_CLIENTS} (idZona, nombre, apellidoPaterno, apellidoMaterno,edad, domicilio, colonia, ciudad, telefono, clasificacion, trabajo, domicilioTrabajo, telefonoTrabajo, nombreReferencia, domicilioReferencia, telefonoReferencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-            const personalData = [
-                clientData.zoneId,
-                clientData.name,
-                clientData.paternalLn,
-                clientData.maternalLn,
-                clientData.age,
-                clientData.address,
-                clientData.colonia,
-                clientData.city,                
-                clientData.phone,
-                clientData.classification,
-                clientData.jobName,
-                clientData.workAddress,             
-                clientData.workPhone,
-                clientData.referenceName,
-                clientData.referenceAddress,
-                clientData.referencePhone
+            const data = [
+                personalData.zoneId,
+                personalData.name,
+                personalData.paternalLn,
+                personalData.maternalLn,
+                personalData.age,
+                personalData.address,
+                personalData.colonia,
+                personalData.city,
+                personalData.phone,
+                personalData.classification,
+                personalData.jobName,
+                personalData.workAddress,             
+                personalData.workPhone,
+                personalData.referenceName,
+                personalData.referenceAddress,
+                personalData.referencePhone
             ];
 
-            console.log('Datos personales a guardar: ', personalData);
-
-            const insertClientResult = await queryAsync(insertClientQuery, personalData);
+            const insertClientResult = await queryAsync(insertClientQuery, data);
             return insertClientResult;
         } catch(error) {
             console.log('Error al crear el cliente', error);
         }
 };
 
-async function insertClientGuarantees (clientId, garantias) {
+async function insertClientGuarantees (clientId, guarantees) {
     try {
-        const insertClientGuaranteesQuery = `INSERT INTO ${TABLE_GRNT_CNTS} (idCliente, descripcion) VALUES ?`;
-        const guarantees = garantias.map(guarantee => [clientId, guarantee]);
-        await queryAsync(insertClientGuaranteesQuery, [guarantees]);
+        const insertGuaranteesQuery = `INSERT INTO ${TABLE_GRNT_CNTS} (idCliente, descripcion) VALUES ?`;
+        const values = guarantees.map(guarantee => [clientId, guarantee]);
+        await queryAsync(insertGuaranteesQuery, [values]);
     } catch(error) {
         throw error;
     }
 };
 
-const createGuarantor = (guarantorData) => {
-    return new Promise((resolve, reject) => {
-        const query = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-        const personalData = [
-            guarantorData.clientId,
-            guarantorData.name,
-            guarantorData.paternalLn,
-            guarantorData.maternalLn,
-            guarantorData.age,
-            guarantorData.address,
-            guarantorData.colonia,
-            guarantorData.city,
-            guarantorData.phone,
-            guarantorData.nameJob,
-            guarantorData.addressJob,
-            guarantorData.phoneJob
+async function createGuarantor (personalData) {
+    try {
+        const insertGuarantorQuery = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const data = [
+            personalData.clientId,
+            personalData.name,
+            personalData.paternalLn,
+            personalData.maternalLn,
+            personalData.age,
+            personalData.address,
+            personalData.colonia,
+            personalData.city,
+            personalData.phone,
+            personalData.jobName,
+            personalData.workAddress,
+            personalData.workPhone
         ];
-
-        db.query(query, personalData, (err, result) => {
-            if (err) {
-                console.log('No se agregaron los datos personales', err);
-                reject(err);
-            }
-            else {
-                console.log('Se agregaron correctamente los datos personales')
-                resolve(result);
-            }
-        });
-    });
+        const insertGuarantorResult = await queryAsync(insertGuarantorQuery, data);
+        return insertGuarantorResult;
+    } catch(error) {
+        console.log('Error al crear el cliente', error);
+    }
 };
 
-const insertAvalGarantias = (avalId, garantias) => {
-    return new Promise((resolve, reject) => {
-        const query = `INSERT INTO ${TABLE_GRNT_AVAL} (idAval, descripcion) VALUES ?`;
-
-        const values = garantias.map(desc => [avalId, desc]);
-
-        db.query(query, [values], (err, result) => {
-            if (err) {
-                reject(err);
-            }
-            else {
-                resolve(result);
-            }
-        });
-    });
+async function insertGuarantorGuarantees (guarantorId, guarantees)  {
+    try {
+        const insertGuaranteesQuery = `INSERT INTO ${TABLE_GRNT_AVAL} (idAval, descripcion) VALUES ?`;
+        const values = guarantees.map(guarantee => [guarantorId, guarantee]);
+        await queryAsync(insertGuaranteesQuery, [values]);
+    } catch(error) {
+        console.log(error);
+    }
 };
 
 async function updateClient(idCliente, dataToUpdate) {
@@ -306,7 +290,7 @@ module.exports = {
     createClient,
     insertClientGuarantees,
     createGuarantor,
-    insertAvalGarantias,
+    insertGuarantorGuarantees,
     updateClient,
     updateGuarantor
 }

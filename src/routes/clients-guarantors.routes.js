@@ -6,19 +6,17 @@ const clientGuarantor = require('../controllers/clients-guarantors.controller');
 //Ruta para agregar cliente
 router.post('/add/client', async (req, res) => {
     try {
-        console.log(req.body);
-        const clientData = req.body;
-        const garantias = clientData.collateral ? Object.values(clientData.collateral) : [];
-        console.log('Garantias del cliente: ', garantias);
+        const { personalData, collateral } = req.body;
+        const guarantees = Object.values(collateral);
 
         //Insertar al cliente 
-        const result = await clientGuarantor.createClient(clientData);
+        const result = await clientGuarantor.createClient(personalData);
         const clientId = result.insertId;
         console.log('Valir del ID: ', clientId);
 
         //Insertar garantias
-        if (garantias.length > 0) {
-            await clientGuarantor.insertClientGuarantees(clientId, garantias);
+        if (guarantees.length > 0) {
+            await clientGuarantor.insertClientGuarantees(clientId, guarantees);
             console.log('Garantias del cliente agregadas.');
         }
         return res.status(201).json({ 
@@ -38,18 +36,17 @@ router.post('/add/client', async (req, res) => {
 //Ruta para agregar al aval(es)
 router.post('/add/guarantor', async (req, res) => {
     try {
-        console.log('Datos del front: ', req.body);
-        const guarantorData = req.body;
-        console.log('garantias del cliente: ', guarantorData);
-        const garantias = Object.values(guarantorData.garantias);
+        const { personalData, collateral } = req.body;
+        const guarantees = Object.values(collateral);
 
         //Insertar el aval
-        const result = await clientGuarantor.createGuarantor(guarantorData);
-        avalId = result.insertId;
+        const result = await clientGuarantor.createGuarantor(personalData);
+        const guarantorId = result.insertId;
+        console.log('Id del aval a agregar sus garantias: ', guarantorId);
 
         //Insertar garantias
-        if (garantias.length > 0) {
-            await clientGuarantor.insertAvalGarantias(avalId, garantias);
+        if (guarantees.length > 0) {
+            await clientGuarantor.insertGuarantorGuarantees(guarantorId, guarantees);
             console.log('Garantias del aval agregadas.')
         }
 
