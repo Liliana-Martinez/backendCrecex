@@ -423,8 +423,9 @@ const getClientsFromZone = (idZona) => {
                   const { atraso, adelanto, falla } =
                     calcularEstadoDePagosOrdenado(pagos, fechaEsperada);
                   let adeudo = null;
-                  if (cliente.tipoPago?.toLowerCase() === 'efectivo') {
-                    adeudo = cliente.adeudo;
+                  const pagoConAdeudo = pagos.find(p => Number(p.adeudo || 0) > 0);
+                  if (pagoConAdeudo) {
+                    adeudo = pagoConAdeudo.adeudo;
                   }
                   resolveCliente({
                     ...cliente,
@@ -506,6 +507,15 @@ const registrarPagos = async (pagos) => {
             sabadoActual.getTime()
           );
         });
+
+        // Si el registro viene vacío, ignorarlo
+        if (
+          monto <= 0 &&
+          recargoExtra <= 0 &&
+          (!paymentType || paymentType.trim() === '')
+        ) {
+        continue;
+        }
       // Solo cambia tipo de pago
       if (monto <= 0 && paymentType) {
         if (semanaActual) {
@@ -526,10 +536,11 @@ const registrarPagos = async (pagos) => {
 console.log('monto:', monto);
 
 // Pago de adeudo de la semana actual
+const semanaAdeudo = semanaActual || pagoConAdeudo;
 if (
   paymentType === 'pagado' &&
   semanaActual &&
-  Number(semanaActual.adeudo || 0) > 0
+  Number(semanaAdeudo.adeudo || 0) > 0
 ) {
 
   console.log('ENTRO A PAGAR ADEUDO');
@@ -537,9 +548,9 @@ if (
   console.log(
     'Semana actual:',
     {
-      idPago: semanaActual.idPago,
-      adeudo: semanaActual.adeudo,
-      tipoPago: semanaActual.tipoPago
+      idPago: semanaAdeudo.idPago,
+      adeudo: semanaAdeudo.adeudo,
+      tipoPago: semanaAdeudo.tipoPago
     }
   );
 
@@ -618,6 +629,7 @@ if (
           ['pendiente', 'falla', 'incompleto']
             .includes(semana.estado)
         ) {
+
           const restante =
             Number(semana.cantidad) -
             Number(
@@ -734,8 +746,8 @@ if (
               'adelantado',
               0,
               paymentType,
-              0,
-              false
+              semanaActual ? 0 : payment,
+              !semanaActual
             );
             monto -= restante;
           } else {
@@ -745,9 +757,9 @@ if (
               'adelantadoIncompleto',
               0,
               paymentType,
-              0,
-              false
-            );
+              semanaActual ? 0 : payment,
+              !semanaActual
+            ); //aquiiiiiiiii
             monto = 0;
           }
         }
@@ -799,27 +811,37 @@ const actualizarPago = async (
   try {
     const pagoActual =
       await obtenerPagoPorId(idPago);
+
     if (!pagoActual) {
       throw new Error('Pago no encontrado');
     }
+
     const adeudoActual =
       Number(pagoActual.adeudo || 0);
+
     const recargoActual =
       Number(pagoActual.recargos || 0);
+
     const extrasActual =
       Number(pagoActual.extras || 0);
+
     const fechaPagadaActual =
       pagoActual.fechaPagada;
+
     const nuevoRecargo =
       recargoActual + recargoExtra;
+
     let nuevoAdeudo =
       adeudoActual;
+
     let nuevoExtra =
       extrasActual;
+
     // Si viene valor para extras
     if (extra > 0) {
       const hoy =
         new Date();
+
       if (
         fechaPagadaActual &&
         esMismaSemana(
@@ -836,6 +858,7 @@ const actualizarPago = async (
           extra;
       }
     }
+
     if (
       tipoPago === 'efectivo' &&
       esSemanaActual
@@ -846,6 +869,13 @@ const actualizarPago = async (
           adeudoRecibido || 0
         );
     }
+
+    // ✅ Si llega vacío o null, conserva el tipo de pago actual
+    const tipoPagoFinal =
+      tipoPago && tipoPago.trim() !== ''
+        ? tipoPago
+        : pagoActual.tipoPago;
+
     const query = `
       UPDATE pagos
       SET cantidadPagada = ?,
@@ -857,19 +887,30 @@ const actualizarPago = async (
           extras = ?
       WHERE idPago = ?
     `;
+
     const params = [
       cantidadPagada,
       nuevoEstado,
       nuevoRecargo,
-      tipoPago,
+      tipoPagoFinal,
       nuevoAdeudo,
       nuevoExtra,
       idPago
     ];
+
+    console.log({
+      idPago,
+      tipoPago: tipoPagoFinal,
+      cantidadPagada,
+      nuevoEstado,
+      nuevoAdeudo
+    });
+
     console.log(
       'ACTUALIZANDO PAGO:',
       params
     );
+
     return await queryAsync(
       query,
       params
