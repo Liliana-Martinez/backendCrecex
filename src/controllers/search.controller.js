@@ -468,6 +468,111 @@ async function searchModifyGuarantor(nombreCompleto) {
         throw error;
     }
 }
+const searchManageCredits = (nombreCompleto) => {
+    return new Promise((resolve, reject) => {
+        const queryCliente = `
+            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno
+            FROM ${TABLE_CLIENTES}
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno)
+            COLLATE utf8mb4_general_ci LIKE ?`;
+
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+            if (err) return reject({ code: 500, message: 'Error al buscar cliente' });
+            if (clienteRows.length === 0) return reject({ code: 404, message: 'Cliente no encontrado' });
+            const cliente = clienteRows[0];
+            const idCliente = cliente.idCliente;
+            const queryCredito = `
+                SELECT monto, fechaEntrega, referencia, abonoSemanal, semanas,idCredito
+                FROM ${TABLE_CREDITOS}
+                WHERE idCliente = ?
+                AND estado = 'activo'
+                LIMIT 1`;
+            db.query(queryCredito, [idCliente], (err, creditoRows) => {
+                if (err) return reject({ code: 500, message: 'Error al buscar crédito' });
+
+                return resolve({
+                    cliente: {
+                        nombre: `${cliente.nombre} ${cliente.apellidoPaterno} ${cliente.apellidoMaterno}`.trim()
+                    },
+                    credito: creditoRows[0] || null
+                });
+            });
+        });
+    });
+};
+const searchManagePayments = (nombreCompleto) => {
+    return new Promise((resolve, reject) => {
+        const queryCliente = `
+            SELECT idCliente, nombre, apellidoPaterno, apellidoMaterno
+            FROM ${TABLE_CLIENTES}
+            WHERE CONCAT_WS(' ', nombre, apellidoPaterno, apellidoMaterno)
+            COLLATE utf8mb4_general_ci LIKE ?`;
+        const formattedNombre = `%${nombreCompleto.trim()}%`;
+        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
+            if (err) {
+                return reject({
+                    code: 500,
+                    message: 'Error al buscar cliente'
+                });
+            }
+            if (clienteRows.length === 0) {
+                return reject({
+                    code: 404,
+                    message: 'Cliente no encontrado'
+                });
+            }
+            const cliente = clienteRows[0];
+            const queryCredito = `
+                SELECT idCredito
+                FROM ${TABLE_CREDITOS}
+                WHERE idCliente = ?
+                AND estado = 'activo'
+                LIMIT 1`;
+            db.query(queryCredito, [cliente.idCliente], (err, creditoRows) => {
+                if (err) {
+                    return reject({
+                        code: 500,
+                        message: 'Error al buscar crédito'
+                    });
+                }
+                if (creditoRows.length === 0) {
+                    return resolve({
+                        cliente: {
+                            nombre: `${cliente.nombre} ${cliente.apellidoPaterno} ${cliente.apellidoMaterno}`.trim()
+                        },
+                        pagos: []
+                    });
+                }
+                const idCredito = creditoRows[0].idCredito;
+                const queryPagos = `
+                    SELECT
+                        numeroSemana,
+                        cantidad,
+                        cantidadPagada,
+                        fechaPagada,
+                        fechaEsperada
+                    FROM ${TABLE_PAGOS}
+                    WHERE idCredito = ?
+                    ORDER BY numeroSemana ASC`;
+                db.query(queryPagos, [idCredito], (err, pagosRows) => {
+                    if (err) {
+                        return reject({
+                            code: 500,
+                            message: 'Error al obtener pagos'
+                        });
+                    }
+                    return resolve({
+                        cliente: {
+                            nombre: `${cliente.nombre} ${cliente.apellidoPaterno} ${cliente.apellidoMaterno}`.trim()
+                        },
+                        pagos: pagosRows
+                    });
+                });
+            });
+        });
+    });
+};
 
 module.exports = {
     SearchCredit, 
@@ -475,5 +580,7 @@ module.exports = {
     SearchCollectors,
     searchConsult,
     searchModifyClient,
-    searchModifyGuarantor
+    searchModifyGuarantor,
+    searchManageCredits,
+    searchManagePayments
 };
