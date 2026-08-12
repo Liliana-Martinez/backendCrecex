@@ -8,6 +8,31 @@ router.post('/add/client', async (req, res) => {
     try {
         const { personalData, collateral } = req.body;
         const guarantees = Object.values(collateral);
+        console.log('PERSONAL DATA: ', personalData);
+
+        //Validar que haya datos perosonales del cliente
+        if (!personalData || typeof personalData !== 'object') {
+            return res.status(400).json({
+                message: 'Los datos del cliente son obligatorios'
+            });
+        }
+
+        //Llamar la funcion que valida el personalData
+        const validationErrors = clientGuarantor.validatePersonalData(personalData);
+        if (Object.keys(validationErrors).length > 0) {
+            return res.status(400).json({ 
+                message: 'Los datos del cliente no son válidos',
+                errors: validationErrors
+             });
+        }
+
+        //Validar que el idZona sea valido
+        const isValidZone = await clientGuarantor.validateZone(personalData.zoneId);
+        if (!isValidZone) {
+            return res.status(400).json({
+                message: 'La zona seleccionada no existe'
+            });
+        }
 
         //Insertar al cliente 
         const result = await clientGuarantor.createClient(personalData);
@@ -17,18 +42,18 @@ router.post('/add/client', async (req, res) => {
         //Insertar garantias
         if (guarantees.length > 0) {
             await clientGuarantor.insertClientGuarantees(clientId, guarantees);
-            console.log('Garantias del cliente agregadas.');
         }
         return res.status(201).json({ 
             message: 'Cliente y garantias guardados correctamente',
             clientId: clientId
         });
     } catch (error) {
-        console.log('Error en la BD: ', error);
-        if (error.message === 'El cliente ya existe.') {
+        console.log(error);
+        if (error.message === 'Ya existe un cliente con ese nombre') {
             res.status(409).json({ message: error.message });
         } else {
-            res.status(500).json({ message: 'Error al guardar el cliente y garantias'});
+            res.status(500).json({ message: 'Error al guardar el cliente'});
+            console.log('ERROR: ', error);
         }
     }
 });

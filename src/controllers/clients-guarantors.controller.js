@@ -25,7 +25,7 @@ async function createClient (personalData) {
             const searchClientResult = await queryAsync(searchClientQuery, [personalData.name, personalData.paternalLn, personalData.maternalLn]);
 
             if (searchClientResult.length > 0) {
-                throw new Error('El cliente ya existe.');
+                throw new Error('Ya existe un cliente con ese nombre');
             }
 
             //Insertar los datos del cliente si no existe
@@ -52,7 +52,7 @@ async function createClient (personalData) {
             const insertClientResult = await queryAsync(insertClientQuery, data);
             return insertClientResult;
         } catch(error) {
-            console.log('Error al crear el cliente', error);
+            throw error;
         }
 };
 
@@ -286,12 +286,146 @@ async function updateGuarantor(idAval, dataToUpdate) {
      };
 }
 
+//Funcion para validar datos del cliente
+function validatePersonalData(personalData){
+    console.log('personalData DENTRO DE VALIDACION: ', personalData);
+    const errors = {};
+
+    const nameRegex = /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/;
+    const phoneRegex = /^\d{10}$/;
+    const addressRegex = /^[A-Za-z0-9\s.,#\-°]+$/;
+    const classificationRegex = /^[A-Da-d]$/;
+
+    //Nombre
+    if (!personalData.name?.trim()) {
+        errors.name = 'El nombre es obligatorio';
+    } else if(!nameRegex.test(personalData.name)) {
+        errors.name = 'El nombre contiene caracteres no válidos';
+    }
+    
+    //Apellido paterno
+    if (!personalData.paternalLn?.trim()) {
+        errors.paternalLn = 'El apellido paterno es obligatorio';
+    } else if (!nameRegex.test(personalData.paternalLn)) {
+        errors.paternalLn = 'El apellido paterno contiene caracteres no válidos';
+    }
+
+    //Apellido materno
+    if (!personalData.maternalLn?.trim()) {
+        errors.maternalLn = 'El apellido materno es obligatorio';
+    } else if (!nameRegex.test(personalData.maternalLn)) {
+        errors.maternalLn = 'El apellido materno contiene caracteres no válidos';
+    }
+
+    //Edad
+    if (personalData.age === null || personalData.age === undefined || personalData.age === '') {
+        errors.age = 'La edad es obligatoria';
+    } else if (personalData.age < 18 || personalData.age > 60) {
+        errors.age = 'La edad debe estar entre los 18 y 60 años';
+    }
+
+    //Domicilio
+    if (!personalData.address?.trim()) {
+        errors.address = 'El domicilio del cliente es obligatorio';
+    } else if (!addressRegex.test(personalData.address)) {
+        errors.address = 'El domicilio del cliente no es válido'
+    }
+
+    //Colonia
+    if (!personalData.colonia?.trim()) {
+        errors.colonia = 'La colonia es obligatoria';
+    } else if (!nameRegex.test(personalData.colonia)) {
+        errors.colonia = 'La colonia no es válida';
+    }
+
+    //Ciudad
+    if (!personalData.city?.trim()) {
+        errors.city = 'La ciudad es obligatoria';
+    } else if (!nameRegex.test(personalData.city)) {
+        errors.city = 'La ciudad no es válida';
+    }
+
+    //Telefono cliente
+    if (!personalData.phone?.trim()) {
+        errors.phone = 'El número de teléfono es obligatorio';
+    } else if (!phoneRegex.test(personalData.phone)) {
+        errors.phone = 'El número de teléfono no es válido';
+    }
+
+    //Clasificacion
+    if (!personalData.classification?.trim()) {
+        errors.classification = 'La clasificación es obligatoria';
+    } else if (!classificationRegex.test(personalData.classification)) {
+        errors.classification = 'La clasificación debe ser A, B, C o D';
+    }
+
+    //Zona
+    if (!personalData.zoneId) {
+        errors.zoneId = 'La zona es obligatoria';
+    }
+
+    //Trabajo
+    if (!personalData.jobName?.trim()) {
+        errors.jobName = 'El nombre del trabajo es obligatorio';
+    } else if (!nameRegex.test(personalData.jobName)) {
+        errors.jobName = 'El nombre de trabajo no es válido';
+    }
+
+    //Domicilio del trabajo
+    if (!personalData.workAddress?.trim()) {
+        errors.workAddress = 'El domicilio del trabajo es obligatorio';
+    } else if (!addressRegex.test(personalData.workAddress)) {
+        errors.workAddress = 'Domicilio de trabajo no válido';
+    }
+
+    //Telefono de trabajo
+    if (!personalData.workPhone?.trim()) {
+        errors.workPhone = 'El teléfono de trabajo es obligatorio';
+    } else if (!phoneRegex.test(personalData.workPhone)) {
+        errors.workPhone = 'El teléfono de trabajo no es válido';
+    }
+
+    //Nombre de la referencia
+    if (!personalData.referenceName?.trim()) {
+        errors.referenceName = 'El nombre de la referencia es obligatorio';
+    } else if (!nameRegex.test(personalData.referenceName)) {
+        errors.referenceName = 'El nombre de la referencia no es válido';
+    }
+
+    //Domicilio referencia
+    if (!personalData.referenceAddress?.trim()) {
+        errors.referenceAddress = 'El domicilio de la referencia es obligatorio';
+    } else if (!addressRegex.test(personalData.referenceAddress)) {
+        errors.referenceAddress = 'El domicilio de la referencia no es válido';
+    }
+
+    //Telefono de la referencia
+    if (!personalData.referencePhone?.trim()) {
+        errors.referencePhone = 'El teléfono de la referencia es obligatorio';
+    } else if (!phoneRegex.test(personalData.referencePhone)) {
+        errors.referencePhone= 'El teléfono de la referencia no es válido';
+    }
+
+    console.log('Objeto de errores: ', errors);
+    return errors;
+}
+
+//Funcion para validar la zona
+async function validateZone(zoneId) {
+    const searchZoneQuery = `SELECT idZona FROM zonas WHERE idZona=? LIMIT 1`;
+    const result = await queryAsync(searchZoneQuery, [zoneId]);
+
+    return result.length > 0;
+}
+
 module.exports = {
     createClient,
     insertClientGuarantees,
     createGuarantor,
     insertGuarantorGuarantees,
     updateClient,
-    updateGuarantor
+    updateGuarantor,
+    validatePersonalData,
+    validateZone
 }
 
