@@ -16,104 +16,88 @@ return new Promise((resolve, reject) => {
 }
 
 //insertar los datos personales del cliente
-async function createClient(clientData) {
+async function createClient (personalData) {
         try {
+            console.log('datos del cliente dentro del controller: ', personalData);
             //Validar si el cliente existe
             const searchClientQuery = `SELECT idCliente FROM ${TABLE_CLIENTS} WHERE nombre = ? AND apellidoPaterno = ? AND apellidoMaterno = ?`;
 
-            const searchClientResult = await queryAsync(searchClientQuery, [clientData.name, clientData.paternalLn, clientData.maternalLn]);
+            const searchClientResult = await queryAsync(searchClientQuery, [personalData.name, personalData.paternalLn, personalData.maternalLn]);
 
             if (searchClientResult.length > 0) {
-                throw new Error('El cliente ya existe.');
+                throw new Error('Ya existe un cliente con ese nombre');
             }
 
             //Insertar los datos del cliente si no existe
             const insertClientQuery = `INSERT INTO ${TABLE_CLIENTS} (idZona, nombre, apellidoPaterno, apellidoMaterno,edad, domicilio, colonia, ciudad, telefono, clasificacion, trabajo, domicilioTrabajo, telefonoTrabajo, nombreReferencia, domicilioReferencia, telefonoReferencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-            const personalData = [
-                clientData.zoneId,
-                clientData.name,
-                clientData.paternalLn,
-                clientData.maternalLn,
-                clientData.age,
-                clientData.address,
-                clientData.colonia,
-                clientData.city,                
-                clientData.phone,
-                clientData.classification,
-                clientData.jobName,
-                clientData.workAddress,             
-                clientData.workPhone,
-                clientData.referenceName,
-                clientData.referenceAddress,
-                clientData.referencePhone
+            const data = [
+                personalData.zoneId,
+                personalData.name,
+                personalData.paternalLn,
+                personalData.maternalLn,
+                personalData.age,
+                personalData.address,
+                personalData.colonia,
+                personalData.city,
+                personalData.phone,
+                personalData.classification,
+                personalData.jobName,
+                personalData.workAddress,             
+                personalData.workPhone,
+                personalData.referenceName,
+                personalData.referenceAddress,
+                personalData.referencePhone
             ];
 
-            console.log('Datos personales a guardar: ', personalData);
-
-            const insertClientResult = await queryAsync(insertClientQuery, personalData);
+            const insertClientResult = await queryAsync(insertClientQuery, data);
             return insertClientResult;
         } catch(error) {
-            console.log('Error al crear el cliente', error);
+            throw error;
         }
 };
 
-async function insertClientGuarantees (clientId, garantias) {
+async function insertClientGuarantees (clientId, guarantees) {
     try {
-        const insertClientGuaranteesQuery = `INSERT INTO ${TABLE_GRNT_CNTS} (idCliente, descripcion) VALUES ?`;
-        const guarantees = garantias.map(guarantee => [clientId, guarantee]);
-        await queryAsync(insertClientGuaranteesQuery, [guarantees]);
+        const insertGuaranteesQuery = `INSERT INTO ${TABLE_GRNT_CNTS} (idCliente, descripcion) VALUES ?`;
+        const values = guarantees.map(guarantee => [clientId, guarantee]);
+        await queryAsync(insertGuaranteesQuery, [values]);
     } catch(error) {
         throw error;
     }
 };
 
-const createGuarantor = (guarantorData) => {
-    return new Promise((resolve, reject) => {
-        const query = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-
-        const personalData = [
-            guarantorData.clientId,
-            guarantorData.name,
-            guarantorData.paternalLn,
-            guarantorData.maternalLn,
-            guarantorData.age,
-            guarantorData.address,
-            guarantorData.colonia,
-            guarantorData.city,
-            guarantorData.phone,
-            guarantorData.nameJob,
-            guarantorData.addressJob,
-            guarantorData.phoneJob
+async function createGuarantor (personalData) {
+    try {
+        const insertGuarantorQuery = `INSERT INTO ${TABLE_AVALES} (idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, colonia, ciudad, telefono, trabajo, domicilioTrabajo, telefonoTrabajo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const data = [
+            personalData.clientId,
+            personalData.name,
+            personalData.paternalLn,
+            personalData.maternalLn,
+            personalData.age,
+            personalData.address,
+            personalData.colonia,
+            personalData.city,
+            personalData.phone,
+            personalData.jobName,
+            personalData.workAddress,
+            personalData.workPhone
         ];
-
-        db.query(query, personalData, (err, result) => {
-            if (err) {
-                console.log('No se agregaron los datos personales', err);
-                reject(err);
-            }
-            else {
-                console.log('Se agregaron correctamente los datos personales')
-                resolve(result);
-            }
-        });
-    });
+        const insertGuarantorResult = await queryAsync(insertGuarantorQuery, data);
+        return insertGuarantorResult;
+    } catch(error) {
+        console.log('Error al crear el cliente', error);
+    }
 };
 
-const insertAvalGarantias = (avalId, garantias) => {
-    return new Promise((resolve, reject) => {
-        const query = `INSERT INTO ${TABLE_GRNT_AVAL} (idAval, descripcion) VALUES ?`;
-
-        const values = garantias.map(desc => [avalId, desc]);
-
-        db.query(query, [values], (err, result) => {
-            if (err) {
-                reject(err);
-            }
-            else {
-                resolve(result);
-            }
-        });
-    });
+async function insertGuarantorGuarantees (guarantorId, guarantees)  {
+    try {
+        const insertGuaranteesQuery = `INSERT INTO ${TABLE_GRNT_AVAL} (idAval, descripcion) VALUES ?`;
+        const values = guarantees.map(guarantee => [guarantorId, guarantee]);
+        await queryAsync(insertGuaranteesQuery, [values]);
+    } catch(error) {
+        console.log(error);
+    }
 };
 
 async function updateClient(idCliente, dataToUpdate) {
@@ -302,12 +286,146 @@ async function updateGuarantor(idAval, dataToUpdate) {
      };
 }
 
+//Funcion para validar datos del cliente
+function validatePersonalData(personalData){
+    console.log('personalData DENTRO DE VALIDACION: ', personalData);
+    const errors = {};
+
+    const nameRegex = /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]+$/;
+    const phoneRegex = /^\d{10}$/;
+    const addressRegex = /^[A-Za-z0-9\s.,#\-°]+$/;
+    const classificationRegex = /^[A-Da-d]$/;
+
+    //Nombre
+    if (!personalData.name?.trim()) {
+        errors.name = 'El nombre es obligatorio';
+    } else if(!nameRegex.test(personalData.name)) {
+        errors.name = 'El nombre contiene caracteres no válidos';
+    }
+    
+    //Apellido paterno
+    if (!personalData.paternalLn?.trim()) {
+        errors.paternalLn = 'El apellido paterno es obligatorio';
+    } else if (!nameRegex.test(personalData.paternalLn)) {
+        errors.paternalLn = 'El apellido paterno contiene caracteres no válidos';
+    }
+
+    //Apellido materno
+    if (!personalData.maternalLn?.trim()) {
+        errors.maternalLn = 'El apellido materno es obligatorio';
+    } else if (!nameRegex.test(personalData.maternalLn)) {
+        errors.maternalLn = 'El apellido materno contiene caracteres no válidos';
+    }
+
+    //Edad
+    if (personalData.age === null || personalData.age === undefined || personalData.age === '') {
+        errors.age = 'La edad es obligatoria';
+    } else if (personalData.age < 18 || personalData.age > 60) {
+        errors.age = 'La edad debe estar entre los 18 y 60 años';
+    }
+
+    //Domicilio
+    if (!personalData.address?.trim()) {
+        errors.address = 'El domicilio del cliente es obligatorio';
+    } else if (!addressRegex.test(personalData.address)) {
+        errors.address = 'El domicilio del cliente no es válido'
+    }
+
+    //Colonia
+    if (!personalData.colonia?.trim()) {
+        errors.colonia = 'La colonia es obligatoria';
+    } else if (!nameRegex.test(personalData.colonia)) {
+        errors.colonia = 'La colonia no es válida';
+    }
+
+    //Ciudad
+    if (!personalData.city?.trim()) {
+        errors.city = 'La ciudad es obligatoria';
+    } else if (!nameRegex.test(personalData.city)) {
+        errors.city = 'La ciudad no es válida';
+    }
+
+    //Telefono cliente
+    if (!personalData.phone?.trim()) {
+        errors.phone = 'El número de teléfono es obligatorio';
+    } else if (!phoneRegex.test(personalData.phone)) {
+        errors.phone = 'El número de teléfono no es válido';
+    }
+
+    //Clasificacion
+    if (!personalData.classification?.trim()) {
+        errors.classification = 'La clasificación es obligatoria';
+    } else if (!classificationRegex.test(personalData.classification)) {
+        errors.classification = 'La clasificación debe ser A, B, C o D';
+    }
+
+    //Zona
+    if (!personalData.zoneId) {
+        errors.zoneId = 'La zona es obligatoria';
+    }
+
+    //Trabajo
+    if (!personalData.jobName?.trim()) {
+        errors.jobName = 'El nombre del trabajo es obligatorio';
+    } else if (!nameRegex.test(personalData.jobName)) {
+        errors.jobName = 'El nombre de trabajo no es válido';
+    }
+
+    //Domicilio del trabajo
+    if (!personalData.workAddress?.trim()) {
+        errors.workAddress = 'El domicilio del trabajo es obligatorio';
+    } else if (!addressRegex.test(personalData.workAddress)) {
+        errors.workAddress = 'Domicilio de trabajo no válido';
+    }
+
+    //Telefono de trabajo
+    if (!personalData.workPhone?.trim()) {
+        errors.workPhone = 'El teléfono de trabajo es obligatorio';
+    } else if (!phoneRegex.test(personalData.workPhone)) {
+        errors.workPhone = 'El teléfono de trabajo no es válido';
+    }
+
+    //Nombre de la referencia
+    if (!personalData.referenceName?.trim()) {
+        errors.referenceName = 'El nombre de la referencia es obligatorio';
+    } else if (!nameRegex.test(personalData.referenceName)) {
+        errors.referenceName = 'El nombre de la referencia no es válido';
+    }
+
+    //Domicilio referencia
+    if (!personalData.referenceAddress?.trim()) {
+        errors.referenceAddress = 'El domicilio de la referencia es obligatorio';
+    } else if (!addressRegex.test(personalData.referenceAddress)) {
+        errors.referenceAddress = 'El domicilio de la referencia no es válido';
+    }
+
+    //Telefono de la referencia
+    if (!personalData.referencePhone?.trim()) {
+        errors.referencePhone = 'El teléfono de la referencia es obligatorio';
+    } else if (!phoneRegex.test(personalData.referencePhone)) {
+        errors.referencePhone= 'El teléfono de la referencia no es válido';
+    }
+
+    console.log('Objeto de errores: ', errors);
+    return errors;
+}
+
+//Funcion para validar la zona
+async function validateZone(zoneId) {
+    const searchZoneQuery = `SELECT idZona FROM zonas WHERE idZona=? LIMIT 1`;
+    const result = await queryAsync(searchZoneQuery, [zoneId]);
+
+    return result.length > 0;
+}
+
 module.exports = {
     createClient,
     insertClientGuarantees,
     createGuarantor,
-    insertAvalGarantias,
+    insertGuarantorGuarantees,
     updateClient,
-    updateGuarantor
+    updateGuarantor,
+    validatePersonalData,
+    validateZone
 }
 

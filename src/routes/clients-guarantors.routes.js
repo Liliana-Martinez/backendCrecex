@@ -6,31 +6,54 @@ const clientGuarantor = require('../controllers/clients-guarantors.controller');
 //Ruta para agregar cliente
 router.post('/add/client', async (req, res) => {
     try {
-        console.log(req.body);
-        const clientData = req.body;
-        const garantias = clientData.collateral ? Object.values(clientData.collateral) : [];
-        console.log('Garantias del cliente: ', garantias);
+        const { personalData, collateral } = req.body;
+        const guarantees = Object.values(collateral);
+        console.log('PERSONAL DATA: ', personalData);
+
+        //Validar que haya datos perosonales del cliente
+        if (!personalData || typeof personalData !== 'object') {
+            return res.status(400).json({
+                message: 'Los datos del cliente son obligatorios'
+            });
+        }
+
+        //Llamar la funcion que valida el personalData
+        const validationErrors = clientGuarantor.validatePersonalData(personalData);
+        if (Object.keys(validationErrors).length > 0) {
+            return res.status(400).json({ 
+                message: 'Los datos del cliente no son válidos',
+                errors: validationErrors
+             });
+        }
+
+        //Validar que el idZona sea valido
+        const isValidZone = await clientGuarantor.validateZone(personalData.zoneId);
+        if (!isValidZone) {
+            return res.status(400).json({
+                message: 'La zona seleccionada no existe'
+            });
+        }
 
         //Insertar al cliente 
-        const result = await clientGuarantor.createClient(clientData);
+        const result = await clientGuarantor.createClient(personalData);
         const clientId = result.insertId;
         console.log('Valir del ID: ', clientId);
 
         //Insertar garantias
-        if (garantias.length > 0) {
-            await clientGuarantor.insertClientGuarantees(clientId, garantias);
-            console.log('Garantias del cliente agregadas.');
+        if (guarantees.length > 0) {
+            await clientGuarantor.insertClientGuarantees(clientId, guarantees);
         }
         return res.status(201).json({ 
             message: 'Cliente y garantias guardados correctamente',
             clientId: clientId
         });
     } catch (error) {
-        console.log('Error en la BD: ', error);
-        if (error.message === 'El cliente ya existe.') {
+        console.log(error);
+        if (error.message === 'Ya existe un cliente con ese nombre') {
             res.status(409).json({ message: error.message });
         } else {
-            res.status(500).json({ message: 'Error al guardar el cliente y garantias'});
+            res.status(500).json({ message: 'Error al guardar el cliente'});
+            console.log('ERROR: ', error);
         }
     }
 });
@@ -38,18 +61,17 @@ router.post('/add/client', async (req, res) => {
 //Ruta para agregar al aval(es)
 router.post('/add/guarantor', async (req, res) => {
     try {
-        console.log('Datos del front: ', req.body);
-        const guarantorData = req.body;
-        console.log('garantias del cliente: ', guarantorData);
-        const garantias = Object.values(guarantorData.garantias);
+        const { personalData, collateral } = req.body;
+        const guarantees = Object.values(collateral);
 
         //Insertar el aval
-        const result = await clientGuarantor.createGuarantor(guarantorData);
-        avalId = result.insertId;
+        const result = await clientGuarantor.createGuarantor(personalData);
+        const guarantorId = result.insertId;
+        console.log('Id del aval a agregar sus garantias: ', guarantorId);
 
         //Insertar garantias
-        if (garantias.length > 0) {
-            await clientGuarantor.insertAvalGarantias(avalId, garantias);
+        if (guarantees.length > 0) {
+            await clientGuarantor.insertGuarantorGuarantees(guarantorId, guarantees);
             console.log('Garantias del aval agregadas.')
         }
 
