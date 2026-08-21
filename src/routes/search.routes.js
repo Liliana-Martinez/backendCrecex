@@ -24,6 +24,12 @@ router.post('/cliente', async (req, res) => {
             case 'consult':
                 result = await searchController.searchConsult(nombreCompleto);  
                 break;
+            case 'manage-credits':
+                result = await searchController.searchManageCredits(nombreCompleto);  
+                break;
+            case 'manage-payments':
+                result = await searchController.searchManagePayments(nombreCompleto);  
+                break;   
             case 'update':
                 if (selectedOption === 'client') {
                     result = await searchController.searchModifyClient(nombreCompleto);

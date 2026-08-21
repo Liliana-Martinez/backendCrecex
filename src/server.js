@@ -14,6 +14,7 @@ const searchRoutes = require('./routes/search.routes');
 const creditBureauRouter = require('./routes/credit-bureau.routes');
 const statisticsRoutes = require('./routes/statistics.routes');
 const commissionsRoutes = require('./routes/commissions.routes');
+const administrationRoutes =require('./routes/administration.routes');
 
 const app = express(); //Crea instancia de express que es la app del servidor
 
@@ -21,7 +22,6 @@ const app = express(); //Crea instancia de express que es la app del servidor
 //Middleware
 app.use(express.json());
 app.use(morgan('dev'));
-
 app.use(cors());
 
 //Definicion de las rutas base de los modulos
@@ -34,4 +34,5 @@ app.use('/api/search', searchRoutes);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/statistics', statisticsRoutes);
 app.use('/api/commissions', commissionsRoutes );
+app.use('/api/administration', administrationRoutes);
 module.exports = app
