@@ -102,8 +102,8 @@ async function insertGuarantorGuarantees (guarantorId, guarantees)  {
 
 async function updateClient(idCliente, dataToUpdate) {
 
-    const fieldMap = {
-        clientes: {
+    const dbFieldNames = {
+        clients: {
             'Nombre': 'nombre',
             'Apellido paterno': 'apellidoPaterno',
             'Apellido materno': 'apellidoMaterno',
@@ -121,111 +121,97 @@ async function updateClient(idCliente, dataToUpdate) {
             'Domicilio de la referencia': 'domicilioReferencia',
             'Teléfono de la referencia': 'telefonoReferencia',
         },
-        zonas: {
-            'Zona': 'codigoZona',
-            'zoneId': 'idZona'
+        zones: {
+            'Zona': 'codigoZona'
         },
-        garantias: {
+        collateral: {
             'Garantía uno': 'garantiaUno',
             'Garantía dos': 'garantiaDos',
             'Garantía tres': 'garantiaTres'
         }
     };
 
-    //console.log('Id del cliente a modificar: ', idCliente);
-    console.log('Datos a modificar: ', dataToUpdate);
-
     if (!idCliente || Object.keys(dataToUpdate).length === 0) {
         throw new Error('Faltan datos para actualizar.');
     }
 
-    // Separar datos por tabla
-    const clienteData = {};
-    const zonaData = {};
-    let garantias = [];
+    // Separar datos para su actualizacion, segun sea la tabla la que pertencen
+    const clientData = {};
+    const zoneData = {};
+    const collateralDescriptions = [];
 
-    for (const key in dataToUpdate) {
-        if (fieldMap.clientes[key]) {
-            clienteData[fieldMap.clientes[key]] = dataToUpdate[key];
-        } else if (fieldMap.zonas[key]) {
-            zonaData[fieldMap.zonas[key]] = dataToUpdate[key];
-        } else if (key === 'garantias') {
-            const garantiasObj = dataToUpdate.garantias || {};
-            console.log('garantiasObj: ', garantiasObj);
+    for (const property in dataToUpdate) {
+        if (dbFieldNames.clients[property]) {
+            clientData[dbFieldNames.clients[property]] = dataToUpdate[property];
+        } else if (dbFieldNames.zones[property]) {
+            zoneData[dbFieldNames.zones[property]] = dataToUpdate[property];
+        } else if (property === 'collateral') {
+            const collateralData = dataToUpdate.collateral || {};
 
-            for( const gkey of Object.keys(garantiasObj)) {
-                const descripcion = garantiasObj[gkey];
+            const collateralNames = [
+                'Garantía uno',
+                'Garantía dos',
+                'Garantía tres'
+            ];
 
-                if (typeof descripcion === 'string') {
-                    const descTrim = descripcion.trim();
-                    if (descTrim.length > 0) {
-                        garantias.push(descTrim);
-                    }
-                } else if(descripcion != null) {
-                    const descTrim = String(descripcion).trim();
-                    if (descTrim.length > 0) garantias.push(descTrim);
+            for( const collateralName of collateralNames) {
+                const description = collateralData[collateralName];
+
+                if (description== null || String(description).trim().length === 0) {
+                    throw new Error(`${collateralName} es obligatoria`);
                 }
+                collateralDescriptions.push(String(description).trim());
             }
-            console.log('garantias en un array: ', garantias);
-
         }
     }
 
     //Actualizar tabla clientes
-    let resultCliente = null;
-    if (Object.keys(clienteData).length > 0) {
-        const campos = Object.keys(clienteData);
-        const valores = campos.map(c => clienteData[c]);
-        const setClause = campos.map(c => `${c} = ?`).join(', ');
-        const query = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
-        valores.push(idCliente);
-        resultCliente = await queryAsync(query, valores);
+    let clientResult = null;
+    if (Object.keys(clientData).length > 0) {
+        const fields = Object.keys(clientData);
+        const values = fields.map(field => clientData[field]);
+        const dynamicSetClause = fields.map(field => `${field} = ?`).join(', ');
+        const updateClientQuery = `UPDATE ${TABLE_CLIENTS} SET ${dynamicSetClause} WHERE idCliente = ?`;
+        values.push(idCliente);
+        clientResult = await queryAsync(updateClientQuery, values);
     }
 
-
-    /*Actualizar zona del cliente
-    console.log('Id del cliente antes de actualizar zona: ', idCliente);
-    console.log('Zonadata: ', zonaData);*/
-    let resultZona = null;
-    if (Object.keys(zonaData).length > 0) {
-        const campos = Object.keys(zonaData).filter(c => c === 'idZona');
-
-        if (campos.length > 0) {
-            const valores = campos.map(c => zonaData[c]);
-            const setClause = campos.map(c => `${c} = ?`).join(', ');
-            const query = `UPDATE ${TABLE_CLIENTS} SET ${setClause} WHERE idCliente = ?`;
-            valores.push(idCliente);
-
-            resultZona = await queryAsync(query, valores);
-            console.log('Resultado de update zona: ', resultZona);
+    let zoneResult = null;
+    if (Object.keys(zoneData).length > 0){
+        //Buscar el id de la zona a partir de su código
+        const zoneIdResult = await queryAsync('SELECT idZona FROM zonas WHERE codigoZona = ?', [zoneData.codigoZona]);
+        
+        if (zoneIdResult.length === 0) {
+            throw new Error('La zona no existe');
         }
+
+        const zoneId = zoneIdResult[0].idZona;
+
+        const updateZoneQuery = `UPDATE clientes SET idZona = ? WHERE idCliente = ?`;
+        zoneResult = await queryAsync(updateZoneQuery, [zoneId, idCliente]);
     }
 
 
     // Actualizar garantías
-    console.log('Id del cliente antes de actualizar garantias: ', idCliente);
-    console.log('Garantias: ', garantias);
-    let resultGarantias = [];
+    let collateralUpdateResults = [];
 
-    if (Array.isArray(garantias) && garantias.length > 0) {
+    if (collateralDescriptions.length === 3) {
         // Borro todas las garantías del cliente
-        const deleteResult = await queryAsync('DELETE FROM garantias_cliente WHERE idCliente = ?', [idCliente]);
-        console.log('Resultado del delete: ', deleteResult);
+        await queryAsync('DELETE FROM garantias_cliente WHERE idCliente = ?', [idCliente]);
 
-        console.log('garantias antes de actualizarse: ', garantias);
         //Recorrer cada garantia del arreglo
-        for (const descripcion of garantias) {
-            const insertSQL = `INSERT INTO garantias_cliente (idCliente, descripcion) VALUES (?, ?)`;
-            const insertResult = await queryAsync(insertSQL, [idCliente, descripcion]);
-            resultGarantias.push(insertResult);
+        for (const description of collateralDescriptions) {
+            const insertCollateralQuery = `INSERT INTO garantias_cliente (idCliente, descripcion) VALUES (?, ?)`;
+            const insertCollateralResult = await queryAsync(insertCollateralQuery, [idCliente, description]);
+            collateralUpdateResults.push(insertCollateralResult);
         }
     }
 
     return {
         message: 'Datos actualizados correctamente',
-        cliente: resultCliente,
-        zona: resultZona,
-        garantias: resultGarantias
+        client: clientResult,
+        zone: zoneResult,
+        collateral: collateralResult
     };
 }
 

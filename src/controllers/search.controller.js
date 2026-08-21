@@ -3,7 +3,8 @@ const db = require('../db');
 const TABLE_CLIENTES = 'clientes';
 const TABLE_CREDITOS = 'creditos';
 const TABLE_PAGOS = 'pagos';
-const TABLE_AVALES = 'avales'
+const TABLE_AVALES = 'avales';
+
 function queryAsync(sql, params = []) {
     return new Promise((resolve, reject) => {
         db.query(sql, params, (err, results) => {
