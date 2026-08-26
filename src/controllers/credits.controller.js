@@ -185,12 +185,14 @@ const insertarCredito = ({
 };
 //gENERA Y GUARDA REFERENCIA
 const generarYGuardarReferencia = async (idCliente,idCredito,fecha) => {
-    const yyyy =fecha.getFullYear();
-    const mm =String(fecha.getMonth() + 1).padStart(2, '0');
-    const dd =String(fecha.getDate()).padStart(2, '0');
-    const fechaStr =`${yyyy}${mm}${dd}`;
-    const referencia =`${fechaStr}${idCliente}${idCredito}`;
-    const updateReferenciaQuery = `UPDATE ${TABLE_CREDITOS}SET referencia = ?WHERE idCredito = ?`;
+    const yyyy = fecha.getFullYear();
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    const fechaStr = `${yyyy}${mm}${dd}`;
+    const referencia = `${fechaStr}${idCliente}${idCredito}`;
+
+    const updateReferenciaQuery = `UPDATE ${TABLE_CREDITOS} SET referencia = ? WHERE idCredito = ?`;
+
     await new Promise((resolve, reject) => {
         db.query(
             updateReferenciaQuery,
@@ -207,6 +209,7 @@ const generarYGuardarReferencia = async (idCliente,idCredito,fecha) => {
             }
         );
     });
+
     return referencia;
 };
 //Genera los pagos de los creditos creados 
@@ -271,6 +274,7 @@ const createNewCredit = async (req, res) => {
             semanas,
             horarioEntrega
         });
+
         if (modulo !== 'new') {
             return res.status(400).json({
                 error: true,
@@ -286,21 +290,29 @@ const createNewCredit = async (req, res) => {
             montoNum,
             recargosNum,
             atrasosNum
-        } = prepararDatosCredito({monto,semanas,recargos,atrasos});
+        } = prepararDatosCredito({
+            monto,
+            semanas,
+            recargos,
+            atrasos
+        });
 
         const clasificacion =
             await obtenerClasificacionCliente(idCliente);
+
         if (!clasificacion) {
             return res.status(404).json({
                 error: true,
                 message: 'El cliente no existe'
             });
         }
+
         const verificarCreditoExistenteQuery = `
             SELECT COUNT(*) AS total
             FROM ${TABLE_CREDITOS}
             WHERE idCliente = ?
         `;
+
         const resultadoCreditoExistente =
             await new Promise((resolve, reject) => {
 
@@ -312,10 +324,12 @@ const createNewCredit = async (req, res) => {
                             reject(err);
                             return;
                         }
+
                         resolve(result);
                     }
                 );
             });
+
         if (resultadoCreditoExistente[0].total > 0) {
             return res.status(400).json({
                 error: true,
@@ -323,10 +337,16 @@ const createNewCredit = async (req, res) => {
                     'Este cliente ya ha tenido créditos'
             });
         }
+
         let factor;
+
         try {
             factor =
-                validarCreditoPorClasificacion(clasificacion,semanasInt,montoNum);
+                validarCreditoPorClasificacion(
+                    clasificacion,
+                    semanasInt,
+                    montoNum
+                );
         } catch (errorClasificacion) {
             return res.status(400).json({
                 error: true,
@@ -334,13 +354,16 @@ const createNewCredit = async (req, res) => {
                     errorClasificacion.message
             });
         }
+
         const totalAPagar =
             montoNum * factor;
+
         const abonoSemanal =
             Math.round(
                 totalAPagar /
                 semanasInt
             );
+
         const efectivo =
             montoNum -
             recargosNum -
@@ -360,8 +383,7 @@ const createNewCredit = async (req, res) => {
                 tipoCredito: 'nuevo'
             });
 
-        const idCredito =
-            resultInsert.insertId;
+        const idCredito = resultInsert;
 
         const referencia =
             await generarYGuardarReferencia(
@@ -369,15 +391,23 @@ const createNewCredit = async (req, res) => {
                 idCredito,
                 hoy
             );
+
         const semanasRestantes = 0;
         const descuentoSemanas = 0;
         const abonoAnterior = 0;
-        await generarPagosCredito(idCredito,semanasInt,abonoSemanal,primerSábadoSiguiente);
+
+        await generarPagosCredito(
+            idCredito,
+            semanasInt,
+            abonoSemanal,
+            primerSábadoSiguiente
+        );
 
         const respuesta =
             await respuestaImprimir(
                 idCredito
             );
+
         return res.status(201).json({
             abonoSemanal,
             efectivo,
@@ -387,11 +417,13 @@ const createNewCredit = async (req, res) => {
             referencia,
             imprimir: respuesta
         });
+
     } catch (error) {
         console.error(
             'Error al crear crédito nuevo:',
             error
         );
+
         return res.status(400).json({
             error: true,
             message: error.message
@@ -824,8 +856,10 @@ const createAdditionalCredit = async (req, res) => {
             recargosNum,
             atrasosNum
         } = prepararDatosCredito({monto,semanas,recargos,atrasos});
+
         const clasificacion =
             await obtenerClasificacionCliente(idCliente);
+
         if (!clasificacion) {
             return res.status(404).json({
                 error: true,
@@ -839,15 +873,18 @@ const createAdditionalCredit = async (req, res) => {
             WHERE idCliente = ?
             AND estado = 'Activo'
         `;
+
         db.query(
             creditosActivosQuery,
             [idCliente],
             async (errCreditos, resultCreditos) => {
+
                 if (errCreditos) {
                     console.error(
                         'Error al verificar créditos activos:',
                         errCreditos
                     );
+
                     return res.status(500).json({
                         error: true,
                         message:
@@ -870,15 +907,33 @@ const createAdditionalCredit = async (req, res) => {
                             parseFloat(row.monto),
                         0
                     );
+
                 const totalPropuesto =
                     sumaMontos +
                     montoNum;
-                console.log('Clasificación:',clasificacion);
-                console.log('Suma créditos activos:',sumaMontos);
-                console.log('Nuevo crédito:',montoNum);
-                console.log('Total propuesto:',totalPropuesto);
+
+                console.log(
+                    'Clasificación:',
+                    clasificacion
+                );
+
+                console.log(
+                    'Suma créditos activos:',
+                    sumaMontos
+                );
+
+                console.log(
+                    'Nuevo crédito:',
+                    montoNum
+                );
+
+                console.log(
+                    'Total propuesto:',
+                    totalPropuesto
+                );
 
                 let factor;
+
                 try {
                     factor =
                         validarCreditoPorClasificacion(
@@ -897,17 +952,20 @@ const createAdditionalCredit = async (req, res) => {
 
                 const totalAPagar =
                     montoNum * factor;
+
                 const abonoSemanal =
                     Math.round(
                         totalAPagar /
                         semanasInt
                     );
+
                 const efectivo =
                     montoNum -
                     recargosNum -
                     atrasosNum;
 
                 let idCredito;
+
                 try {
                     const resultInsert =
                         await insertarCredito({
@@ -923,13 +981,24 @@ const createAdditionalCredit = async (req, res) => {
                             tipoCredito: 'adicional'
                         });
 
-                    idCredito =
-                        resultInsert.insertId;
+                    idCredito = resultInsert;
+
+                    console.log(
+                        'resultInsert:',
+                        resultInsert
+                    );
+
+                    console.log(
+                        'idCredito generado:',
+                        idCredito
+                    );
+
                 } catch (errInsert) {
                     console.error(
                         'Error al registrar crédito adicional:',
                         errInsert
                     );
+
                     return res.status(500).json({
                         error: true,
                         message:
@@ -938,30 +1007,46 @@ const createAdditionalCredit = async (req, res) => {
                 }
 
                 let referencia;
+
                 try {
                     referencia =
-                        await generarYGuardarReferencia(idCliente,idCredito,hoy);
+                        await generarYGuardarReferencia(
+                            idCliente,
+                            idCredito,
+                            hoy
+                        );
+
                 } catch (errorReferencia) {
                     console.error(
                         'Error al guardar referencia del crédito adicional:',
                         errorReferencia
                     );
+
                     return res.status(500).json({
                         error: true,
                         message:
                             'Error al guardar la referencia del crédito'
                     });
                 }
+
                 const semanasRestantes = 0;
                 const descuentoSemanas = 0;
                 const abonoAnterior = 0;
+
                 try {
-                    await generarPagosCredito(idCredito,semanasInt,abonoSemanal,primerSábadoSiguiente);
+                    await generarPagosCredito(
+                        idCredito,
+                        semanasInt,
+                        abonoSemanal,
+                        primerSábadoSiguiente
+                    );
+
                 } catch (errorPagos) {
                     console.error(
                         'Error al registrar pagos del crédito adicional:',
                         errorPagos
                     );
+
                     return res.status(500).json({
                         error: true,
                         message:
@@ -971,6 +1056,7 @@ const createAdditionalCredit = async (req, res) => {
 
                 const respuesta =
                     await respuestaImprimir(idCredito);
+
                 return res.status(201).json({
                     abonoSemanal,
                     efectivo,
@@ -988,6 +1074,7 @@ const createAdditionalCredit = async (req, res) => {
             'Error al crear crédito adicional:',
             error
         );
+
         return res.status(400).json({
             error: true,
             message: error.message
