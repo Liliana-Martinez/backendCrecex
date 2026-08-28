@@ -254,7 +254,6 @@ const generarPagosCredito = async (idCredito,semanasInt,abonoSemanal,primerSába
     });
 };
 
-
 const createNewCredit = async (req, res) => {
 
     const {
@@ -359,10 +358,9 @@ const createNewCredit = async (req, res) => {
             montoNum * factor;
 
         const abonoSemanal =
-            Math.round(
-                totalAPagar /
-                semanasInt
-            );
+            semanasInt === 12
+                ? Math.floor(totalAPagar / semanasInt)
+                : Math.ceil(totalAPagar / semanasInt);
 
         const efectivo =
             montoNum -
@@ -443,6 +441,7 @@ const createRenewCredit = async (req, res) => {
     try {
 
         validarDatosCredito({idCliente,monto,semanas,horarioEntrega});
+
         const {
             hoy,
             primerSábadoSiguiente,
@@ -460,15 +459,20 @@ const createRenewCredit = async (req, res) => {
                     'Solo se permiten créditos de 12 o 16 semanas'
             });
         }
+
         const factor =
             semanasInt === 12
                 ? 1.5
                 : 1.583;
+
+        const totalAPagar =
+            montoNum * factor;
+
         const abonoSemanal =
-            Math.round(
-                (montoNum * factor) /
-                semanasInt
-            );
+            semanasInt === 12
+                ? Math.floor(totalAPagar / semanasInt)
+                : Math.ceil(totalAPagar / semanasInt);
+
         const queryUltimoCredito = `
             SELECT
                 idCredito,
@@ -481,12 +485,13 @@ const createRenewCredit = async (req, res) => {
             ORDER BY fechaEntrega DESC
             LIMIT 1
         `;
+
         db.query(
             queryUltimoCredito,
             [idCliente],
             (err, result) => {
 
-                if (err ||result.length === 0) {
+                if (err || result.length === 0) {
                     console.error(
                         'Error al obtener último crédito del cliente:',
                         err
@@ -497,16 +502,21 @@ const createRenewCredit = async (req, res) => {
                             'El cliente no tiene historial de créditos para renovar'
                     });
                 }
+
                 const creditoActual =
                     result[0];
+
                 console.log(
                     'creditoActual:',
                     creditoActual
                 );
+
                 const idCreditoAnterior =
                     creditoActual.idCredito;
+
                 const semanasTotales =
                     creditoActual.semanasTotales;
+
                 const abonoAnterior =
                     creditoActual.abonoSemanal;
 
@@ -521,10 +531,12 @@ const createRenewCredit = async (req, res) => {
                     ORDER BY numeroSemana DESC
                     LIMIT 1
                 `;
+
                 db.query(
                     queryUltimaSemana,
                     [idCreditoAnterior],
                     (err2, ultimaSemanaRows) => {
+
                         if (err2) {
                             return res.status(500).json({
                                 error: true,
@@ -532,6 +544,7 @@ const createRenewCredit = async (req, res) => {
                                     'Error al obtener última semana pagada'
                             });
                         }
+
                         const ultimaSemana =
                             ultimaSemanaRows.length > 0
                                 ? ultimaSemanaRows[0].numeroSemana
@@ -548,6 +561,7 @@ const createRenewCredit = async (req, res) => {
                             AND numeroSemana > ?
                             ORDER BY numeroSemana ASC
                         `;
+
                         db.query(
                             queryPagosRestantes,
                             [
@@ -555,6 +569,7 @@ const createRenewCredit = async (req, res) => {
                                 ultimaSemana
                             ],
                             (err3, pagosRestantes) => {
+
                                 if (err3) {
                                     return res.status(500).json({
                                         error: true,
@@ -562,14 +577,29 @@ const createRenewCredit = async (req, res) => {
                                             'Error al calcular semanas restantes'
                                     });
                                 }
+
                                 let descuentoSemanas = 0;
                                 let semanasRestantes = 0;
+
                                 for (const pago of pagosRestantes) {
-                                    if (pago.estado ==='adelantadoIncompleto') {
-                                        descuentoSemanas +=pago.cantidad -(pago.cantidadPagada ?? 0);
+
+                                    if (
+                                        pago.estado ===
+                                        'adelantadoIncompleto'
+                                    ) {
+                                        descuentoSemanas +=
+                                            pago.cantidad -
+                                            (pago.cantidadPagada ?? 0);
+
                                         semanasRestantes++;
-                                    } else if (pago.estado ==='pendiente') {
-                                        descuentoSemanas +=pago.cantidad;
+
+                                    } else if (
+                                        pago.estado ===
+                                        'pendiente'
+                                    ) {
+                                        descuentoSemanas +=
+                                            pago.cantidad;
+
                                         semanasRestantes++;
                                     }
                                 }
@@ -578,15 +608,23 @@ const createRenewCredit = async (req, res) => {
                                     SELECT COUNT(*) AS semanasPagadas
                                     FROM ${TABLE_PAGOS}
                                     WHERE idCredito = ?
-                                    AND estado IN ('pagado','adelantado','pagadoAtrasado')`;
+                                    AND estado IN (
+                                        'pagado',
+                                        'adelantado',
+                                        'pagadoAtrasado'
+                                    )
+                                `;
+
                                 db.query(
                                     querySemanasPagadas,
                                     [idCreditoAnterior],
                                     async (err4, pagadasRows) => {
+
                                         console.log(
                                             'idCreditoAnterior:',
                                             idCreditoAnterior
                                         );
+
                                         if (err4) {
                                             return res.status(500).json({
                                                 error: true,
@@ -594,14 +632,20 @@ const createRenewCredit = async (req, res) => {
                                                     'Error al contar semanas pagadas'
                                             });
                                         }
+
                                         const semanasPagadas =
                                             pagadasRows[0]
                                                 .semanasPagadas;
+
                                         const semanasMinimas =
                                             semanasInt === 12
                                                 ? 10
                                                 : 14;
-                                        if (semanasPagadas <semanasMinimas) {
+
+                                        if (
+                                            semanasPagadas <
+                                            semanasMinimas
+                                        ) {
                                             return res.status(400).json({
                                                 error: true,
                                                 message:
@@ -613,6 +657,7 @@ const createRenewCredit = async (req, res) => {
                                             await obtenerClasificacionCliente(
                                                 idCliente
                                             );
+
                                         if (!clasificacion) {
                                             return res.status(404).json({
                                                 error: true,
@@ -620,8 +665,13 @@ const createRenewCredit = async (req, res) => {
                                                     'El cliente no existe'
                                             });
                                         }
+
                                         try {
-                                            validarCreditoPorClasificacion(clasificacion,semanasInt,montoNum);
+                                            validarCreditoPorClasificacion(
+                                                clasificacion,
+                                                semanasInt,
+                                                montoNum
+                                            );
                                         } catch (
                                             errorClasificacion
                                         ) {
@@ -637,7 +687,9 @@ const createRenewCredit = async (req, res) => {
                                             recargosNum -
                                             atrasosNum -
                                             descuentoSemanas;
+
                                         let idCredito;
+
                                         try {
                                             idCredito =
                                                 await insertarCredito({
@@ -658,13 +710,16 @@ const createRenewCredit = async (req, res) => {
                                                 'Error al registrar nuevo crédito:',
                                                 errorInsert
                                             );
+
                                             return res.status(500).json({
                                                 error: true,
                                                 message:
                                                     'Error al guardar el crédito de renovación'
                                             });
                                         }
+
                                         let referencia;
+
                                         try {
                                             referencia =
                                                 await generarYGuardarReferencia(
@@ -677,12 +732,14 @@ const createRenewCredit = async (req, res) => {
                                                 'Error al guardar referencia:',
                                                 errorReferencia
                                             );
+
                                             return res.status(500).json({
                                                 error: true,
                                                 message:
                                                     'Error al guardar la referencia del crédito'
                                             });
                                         }
+
                                         try {
                                             await generarPagosCredito(
                                                 idCredito,
@@ -695,6 +752,7 @@ const createRenewCredit = async (req, res) => {
                                                 'Error al registrar pagos:',
                                                 errorPagos
                                             );
+
                                             return res.status(500).json({
                                                 error: true,
                                                 message:
@@ -713,21 +771,25 @@ const createRenewCredit = async (req, res) => {
                                             ORDER BY numeroSemana
                                             LIMIT ?
                                         `;
+
                                         const updateAdelantos = `
                                             UPDATE ${TABLE_PAGOS}
                                             SET fechaPagada = CURDATE()
                                             WHERE idCredito = ?
                                             AND estado = 'adelantado'
                                         `;
+
                                         db.query(
                                             updateAdelantos,
                                             [idCreditoAnterior],
                                             (errAdelanto) => {
+
                                                 if (errAdelanto) {
                                                     console.error(
                                                         'Error al actualizar fecha de adelantos:',
                                                         errAdelanto
                                                     );
+
                                                     return res.status(500).json({
                                                         error: true,
                                                         message:
@@ -745,11 +807,13 @@ const createRenewCredit = async (req, res) => {
                                                 semanasRestantes
                                             ],
                                             (err4) => {
+
                                                 if (err4) {
                                                     console.error(
                                                         'Error al actualizar pagos anteriores:',
                                                         err4
                                                     );
+
                                                     return res.status(500).json({
                                                         error: true,
                                                         message:
@@ -762,15 +826,18 @@ const createRenewCredit = async (req, res) => {
                                                     SET estado = 'Pagado'
                                                     WHERE idCredito = ?
                                                 `;
+
                                                 db.query(
                                                     updateCreditoAnterior,
                                                     [idCreditoAnterior],
                                                     (err5) => {
+
                                                         if (err5) {
                                                             console.error(
                                                                 'Error al actualizar el estado del crédito anterior:',
                                                                 err5
                                                             );
+
                                                             return res.status(500).json({
                                                                 error: true,
                                                                 message:
@@ -801,6 +868,7 @@ const createRenewCredit = async (req, res) => {
                                                                         'Error al construir respuesta para imprimir:',
                                                                         error
                                                                     );
+
                                                                     return res.status(500).json({
                                                                         error: true,
                                                                         message:
@@ -826,6 +894,7 @@ const createRenewCredit = async (req, res) => {
             'Error al crear crédito de renovación:',
             error
         );
+
         return res.status(400).json({
             error: true,
             message: error.message
@@ -845,7 +914,7 @@ const createAdditionalCredit = async (req, res) => {
     } = req.body;
 
     try {
-        validarDatosCredito({idCliente,monto,semanas,horarioEntrega});
+        validarDatosCredito({idCliente,semanas,monto,horarioEntrega});
 
         const {
             hoy,
@@ -954,10 +1023,15 @@ const createAdditionalCredit = async (req, res) => {
                     montoNum * factor;
 
                 const abonoSemanal =
-                    Math.round(
-                        totalAPagar /
-                        semanasInt
-                    );
+                    semanasInt === 12
+                        ? Math.floor(
+                            totalAPagar /
+                            semanasInt
+                        )
+                        : Math.ceil(
+                            totalAPagar /
+                            semanasInt
+                        );
 
                 const efectivo =
                     montoNum -
@@ -982,16 +1056,6 @@ const createAdditionalCredit = async (req, res) => {
                         });
 
                     idCredito = resultInsert;
-
-                    console.log(
-                        'resultInsert:',
-                        resultInsert
-                    );
-
-                    console.log(
-                        'idCredito generado:',
-                        idCredito
-                    );
 
                 } catch (errInsert) {
                     console.error(
@@ -1081,6 +1145,7 @@ const createAdditionalCredit = async (req, res) => {
         });
     }
 };
+
 async function respuestaImprimir(idCredito) {
     return new Promise((resolve, reject) => {
         const query = `

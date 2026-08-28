@@ -165,96 +165,125 @@ const SearchCreditRenew = (nombreCompleto) => {
     });
 };
 
+const SearchCollectors = async (nombreCompleto) => {
 
-const SearchCollectors = (nombreCompleto) => {
-    return new Promise((resolve, reject) => {
-        const formattedNombre = `%${nombreCompleto.trim()}%`;
-        const queryCliente = `
-            SELECT c.idCliente, c.nombre, c.apellidoPaterno, c.apellidoMaterno, c.edad, c.domicilio,
-                   c.colonia, c.ciudad, c.telefono, c.clasificacion, c.tipoCliente, c.puntos,
-                   c.trabajo, c.domicilioTrabajo, c.telefonoTrabajo,
-                   c.nombreReferencia, c.domicilioReferencia, c.telefonoReferencia,
-                   z.codigoZona, z.promotor
-            FROM clientes c
-            LEFT JOIN zonas z ON c.idZona = z.idZona
-            WHERE CONCAT_WS(' ', c.nombre, c.apellidoPaterno, c.apellidoMaterno) COLLATE utf8mb4_general_ci LIKE ?
-            LIMIT 1`;
-        db.query(queryCliente, [formattedNombre], (err, clienteRows) => {
-            if (err) return reject(`Error al buscar cliente: ${err.message}`);
-            if (clienteRows.length === 0) {
-                return reject({ code: 404, message: 'Cliente no encontrado' });
-            }
-            const cliente = clienteRows[0];
-            const idCliente = cliente.idCliente;
-            const queryAvales = `
-                SELECT idAval, idCliente, nombre, apellidoPaterno, apellidoMaterno, edad, domicilio, telefono,
-                       trabajo, domicilioTrabajo, telefonoTrabajo
-                FROM avales
-                WHERE idCliente = ?`;
-            db.query(queryAvales, [idCliente], (err, avalesRows) => {
-                if (err) return reject('Error al buscar avales');
-                const queryGarantiasCliente = `
-                    SELECT idGarantia, idCliente, descripcion
-                    FROM garantias_cliente
-                    WHERE idCliente = ?
-                `;
-                db.query(queryGarantiasCliente, [idCliente], (err, garantiasClienteRows) => {
-                    if (err) return reject('Error al buscar garantías del cliente');
-                        const queryCreditoActivo = `
-                            SELECT idCredito, monto, abonoSemanal
-                            FROM creditos
-                            WHERE idCliente = ? AND estado = 'activo'
-                            ORDER BY idCredito DESC
-                            LIMIT 1`;
-                        db.query(queryCreditoActivo, [idCliente], (err, creditosRows) => {
-                        if (err) return reject('Error al buscar crédito activo');
-                        const credito = creditosRows[0] || null;
-                        if (!credito) {
-                            finalizar(null, []);
-                        } else {
-                            const queryPagos = `
-                                SELECT fechaEsperada
-                                FROM pagos
-                                WHERE idCredito = ? `;
-                            db.query(queryPagos, [credito.idCredito], (err, pagosRows) => {
-                                if (err) return reject('Error al buscar pagos');
-                                finalizar(credito, pagosRows);
-                            });
-                        }
-                        function finalizar(creditoData, pagosData) {
-                            if (avalesRows.length === 0) {
-                                return resolve({
-                                    cliente,
-                                    avales: [],
-                                    garantiasCliente: garantiasClienteRows,
-                                    garantiasAval: [],
-                                    credito: creditoData,
-                                    pagos: pagosData
-                                });
-                            }
-                            const avalIds = avalesRows.map(a => a.idAval);
-                            const queryGarantiasAval = `
-                                SELECT idGarantia, idAval, descripcion
-                                FROM garantias_aval
-                                WHERE idAval IN (?)`;
-                            db.query(queryGarantiasAval, [avalIds], (err, garantiasAvalRows) => {
-                                if (err) return reject('Error al buscar garantías de avales');
-                                return resolve({
-                                    cliente,
-                                    avales: avalesRows,
-                                    garantiasCliente: garantiasClienteRows,
-                                    garantiasAval: garantiasAvalRows,
-                                    credito: creditoData,
-                                    pagos: pagosData
-                                });
-                            });
-                        }
-                    });
-                });
-            });
-        });
-    });
+    const formattedNombre = `%${nombreCompleto.trim()}%`;
+    const queryCliente = `
+        SELECT 
+            c.idCliente,
+            c.nombre,
+            c.apellidoPaterno,
+            c.apellidoMaterno,
+            c.edad,
+            c.domicilio,
+            c.colonia,
+            c.ciudad,
+            c.telefono,
+            c.clasificacion,
+            c.tipoCliente,
+            c.puntos,
+            c.trabajo,
+            c.domicilioTrabajo,
+            c.telefonoTrabajo,
+            c.nombreReferencia,
+            c.domicilioReferencia,
+            c.telefonoReferencia,
+            z.codigoZona,
+            z.promotor
+        FROM clientes c
+        LEFT JOIN zonas z ON c.idZona = z.idZona
+        WHERE CONCAT_WS(
+            ' ',
+            c.nombre,
+            c.apellidoPaterno,
+            c.apellidoMaterno
+        ) COLLATE utf8mb4_general_ci LIKE ?
+        LIMIT 1
+    `;
+    const clienteRows = await queryAsync(queryCliente,[formattedNombre]);
+    if (clienteRows.length === 0) {
+        throw {
+            code: 404,
+            message: 'Cliente no encontrado'
+        };
+    }
+    const cliente = clienteRows[0];
+    const idCliente = cliente.idCliente;
+    const queryAvales = `
+        SELECT 
+            idAval,
+            idCliente,
+            nombre,
+            apellidoPaterno,
+            apellidoMaterno,
+            edad,
+            domicilio,
+            telefono,
+            trabajo,
+            domicilioTrabajo,
+            telefonoTrabajo
+        FROM avales
+        WHERE idCliente = ?
+    `;
+    const avalesRows = await queryAsync(queryAvales,[idCliente]);
+    const queryGarantiasCliente = `
+        SELECT 
+            idGarantia,
+            idCliente,
+            descripcion
+        FROM garantias_cliente
+        WHERE idCliente = ?
+    `;
+    const garantiasClienteRows = await queryAsync(queryGarantiasCliente,[idCliente]);
+    const queryCreditoActivo = `
+        SELECT 
+            idCredito,
+            monto,
+            abonoSemanal
+        FROM creditos
+        WHERE idCliente = ?
+          AND estado = 'activo'
+        ORDER BY idCredito DESC
+        LIMIT 1
+    `;
+    const creditosRows = await queryAsync(queryCreditoActivo,[idCliente]);
+    const credito = creditosRows[0] || null;
+    let pagosRows = [];
+    if (credito) {
+        const queryPagos = `
+            SELECT fechaEsperada
+            FROM pagos
+            WHERE idCredito = ?
+        `;
+        pagosRows = await queryAsync(
+            queryPagos,
+            [credito.idCredito]
+        );
+    }
+    let garantiasAvalRows = [];
+    if (avalesRows.length > 0) {
+        const avalIds = avalesRows.map(aval => aval.idAval);
+        const queryGarantiasAval = `
+            SELECT 
+                idGarantia,
+                idAval,
+                descripcion
+            FROM garantias_aval
+            WHERE idAval IN (?)
+        `;
+        garantiasAvalRows = await queryAsync(queryGarantiasAval,[avalIds]);
+    }
+    return {
+        cliente,
+        avales: avalesRows,
+        garantiasCliente: garantiasClienteRows,
+        garantiasAval: garantiasAvalRows,
+        credito,
+        pagos: pagosRows
+    };
 };
+
+
 
 async function searchConsult(nombreCompleto) {
     try {
