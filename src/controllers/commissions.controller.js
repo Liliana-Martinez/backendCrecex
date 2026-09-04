@@ -52,7 +52,7 @@ async function getCollectionRate(idZona) {
       INNER JOIN creditos c ON p.idCredito = c.idCredito
       INNER JOIN clientes cl ON c.idCliente = cl.idCliente
       WHERE
-        c.estado = 'activo'
+        c.estado IN('activo','pagado')
         AND cl.idZona = ?
         AND p.fechaEsperada BETWEEN ? AND ?`;
     const resultSumAmount = await queryAsync(sumAmount, [idZona,startDate,endDate]);
@@ -67,7 +67,7 @@ async function getCollectionRate(idZona) {
       INNER JOIN creditos c ON p.idCredito = c.idCredito
       INNER JOIN clientes cl ON c.idCliente = cl.idCliente
       WHERE
-        c.estado = 'activo'
+        c.estado IN ('activo', 'pagado')
         AND cl.idZona = ?
         AND p.fechaPagada BETWEEN ? AND ?
         AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;

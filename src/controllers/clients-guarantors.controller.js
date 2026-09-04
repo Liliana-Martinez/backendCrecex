@@ -102,6 +102,10 @@ async function insertGuarantorGuarantees (guarantorId, guarantees)  {
 
 async function updateClient(idCliente, dataToUpdate) {
 
+    if (!idCliente || Object.keys(dataToUpdate).length === 0) {
+        throw new Error('No hay datos para actualizar');
+    }
+    
     const dbFieldNames = {
         clients: {
             'Nombre': 'nombre',
@@ -130,10 +134,6 @@ async function updateClient(idCliente, dataToUpdate) {
             'Garantía tres': 'garantiaTres'
         }
     };
-
-    if (!idCliente || Object.keys(dataToUpdate).length === 0) {
-        throw new Error('Faltan datos para actualizar.');
-    }
 
     // Separar datos para su actualizacion, segun sea la tabla la que pertencen
     const clientData = {};
@@ -211,64 +211,93 @@ async function updateClient(idCliente, dataToUpdate) {
         message: 'Datos actualizados correctamente',
         client: clientResult,
         zone: zoneResult,
-        collateral: collateralResult
+        collateral: collateralUpdateResults
     };
 }
 
-async function updateGuarantor(idAval, dataToUpdate) {
+async function updateGuarantor(guarantorId, dataToUpdate) {
 
-    if (!idAval || Object.keys(dataToUpdate).length === 0) {
+    if (!guarantorId || Object.keys(dataToUpdate).length === 0) {
         throw new Error('No hay datos para actualizar');
     }
 
-    //Desestructuracion para separar las garantias, es decir, dataToUpdate = {garantias} y {avalFields}
-    const { garantias, ...avalFields } = dataToUpdate;
-    let resultAval = null;
-
-    const avalFieldsMap = {
-        'Nombre': 'nombre',
-        'Apellido paterno': 'apellidoPaterno',
-        'Apellido materno': 'apellidoMaterno',
-        'Edad': 'edad',
-        'Domicilio': 'domicilio',
-        'Colonia': 'colonia',
-        'Ciudad': 'ciudad',
-        'Teléfono': 'telefono',
-        'Nombre del trabajo' : 'trabajo',
-        'Domicilio del trabajo': 'domicilioTrabajo',
-        'Teléfono del trabajo': 'telefonoTrabajo'
+    const dbFieldNames = {
+        guarantor: {
+            'Nombre': 'nombre',
+            'Apellido paterno': 'apellidoPaterno',
+            'Apellido materno': 'apellidoMaterno',
+            'Edad': 'edad',
+            'Domicilio': 'domicilio',
+            'Colonia': 'colonia',
+            'Ciudad': 'ciudad',
+            'Teléfono': 'telefono',
+            'Nombre del trabajo' : 'trabajo',
+            'Domicilio del trabajo': 'domicilioTrabajo',
+            'Teléfono del trabajo': 'telefonoTrabajo'
+        },
+        collateral: {
+            'Garantía uno': 'garantiaUno',
+            'Garantía dos': 'garantiaDos',
+            'Garantía tres': 'garantiaTres'
+        }
     };
 
-     if (Object.keys(avalFields).length > 0) {
-        const campos = Object.keys(avalFields).map(key => avalFieldsMap[key] || key);
-        const valores = Object.keys(avalFields).map(key => avalFields[key]);
+    // Separar datos para su actualizacion, segun sea la tabla la que pertencen
+    const guarantorData = {};
+    const collateralDescriptions = [];
 
-        const setClause = campos.map(key => `${key} = ?`).join(', ');
-        const queryToUpdate = `UPDATE ${TABLE_AVALES} SET ${setClause} WHERE idAval = ?`;
-        
-        valores.push(idAval);
-        resultAval = await queryAsync(queryToUpdate, valores);
-     }
+    for (const property in dataToUpdate){
+        if (dbFieldNames.guarantor[property]) {
+            guarantorData[dbFieldNames.guarantor[property]] = dataToUpdate[property];
+        } else if (property === 'collateral') {
+            const collateralData = dataToUpdate.collateral || {};
+            const collateralNames = [
+                'Garantía uno',
+                'Garantía dos',
+                'Garantía tres'
+            ];
 
-     let resultGarantias = [];
+            console.log('collateralData: ', collateralData);
 
-     if (garantias && typeof garantias === 'object') {
-        await queryAsync('DELETE FROM garantias_aval WHERE idAval = ?',  [idAval]);
+            for (const collateralName of collateralNames) {
+                const description = collateralData[collateralName];
 
-        for (const key in garantias) {
-            const descripcion = garantias[key];
-            if (descripcion && descripcion.trim() !== ''){
-                const insertGarantiaSQL = `INSERT INTO garantias_aval (idAval, descripcion) VALUES (?, ?)`;
-                await queryAsync(insertGarantiaSQL, [idAval, descripcion]);
-                //const insertResult = await queryAsync(insertGarantiaSQL, [idAval, descripcion]);
+                if (description == null || String(description).trim().length === 0){
+                    throw new Error(`${collateralName} es obligatoria`);
+                }
+                collateralDescriptions.push(String(description).trim());
             }
         }
-     }
+    }
 
+    //Actualizar tabla avales
+    let guarantorResult = null;
+    if (Object.keys(guarantorData).length> 0) {
+        const fields = Object.keys(guarantorData);
+        const values = fields.map(field => guarantorData[field]);
+        const dynamicSetClause = fields.map(field => `${field} = ?`).join(', ');
+        const updateGuarantorQuery = `UPDATE ${TABLE_AVALES} SET ${dynamicSetClause} WHERE idAval = ?`;
+        values.push(guarantorId);
+        guarantorResult = await queryAsync(updateGuarantorQuery, values);
+    }
+
+    //Actualizar garantias
+    let collateralUpdateResults = [];
+    if (collateralDescriptions.length === 3) {
+        //Borrar sus tres garantias
+        await queryAsync('DELETE FROM garantias_aval WHERE idAval = ?', [guarantorId]);
+
+        //Recorrer cada garantia del arreglo
+        for (const description of collateralDescriptions) {
+            const insertCollateralQuery = `INSERT INTO garantias_aval (idAval, descripcion) VALUES(?, ?)`;
+            const insertCollateralResult = await queryAsync(insertCollateralQuery, [guarantorId, description]);
+            collateralUpdateResults.push(insertCollateralResult);
+        }
+    }
      return {
         message: 'Datos actualizados correctamente',
-        aval: resultAval,
-        garantias: resultGarantias
+        aval: guarantorResult,
+        garantias: collateralUpdateResults
      };
 }
 

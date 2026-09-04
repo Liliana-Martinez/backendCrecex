@@ -351,6 +351,7 @@ async function searchModifyClient(nombreCompleto) {
                                     LIMIT 1`;
 
         const clientDataResult = await queryAsync(queryForClientData, [formattedName]);
+        console.log('DATOS DEL CLIENTE: ', clientDataResult);
 
         if (clientDataResult.length === 0) {
             throw new Error ('Cliente no encontrado');
@@ -400,7 +401,6 @@ async function searchModifyClient(nombreCompleto) {
 
 async function searchModifyGuarantor(nombreCompleto) {
     try {
-        console.log('Dentro del buscador de avales del cliente');
         
         const formattedName = `%${nombreCompleto.trim()}%`;
 
@@ -412,6 +412,7 @@ async function searchModifyGuarantor(nombreCompleto) {
             LIMIT 1`
         ;
         const idClientResult = await queryAsync(queryIdClient, [formattedName]);
+
         if (idClientResult.length === 0) {
             throw new Error ('Cliente no encontrado');
         }
@@ -438,31 +439,44 @@ async function searchModifyGuarantor(nombreCompleto) {
             GROUP BY a.idAval`;
 
             const guarantorDataResult = await queryAsync(queryForGuarantorData, [idClient]);
-            
-            const guarantorData = guarantorDataResult.map((aval) => {
-                const garantiasArray = aval.garantias ? aval.garantias.split('|') : [];
-                /*return {
-                    name: aval.nombre,
-                    paternalLn: aval.apellidoPaterno,
-                    maternalLn: aval.apellidoMaterno,
-                    age: aval.edad,
-                    address: aval.domicilio,
-                    colonia: aval.colonia,
-                    city: aval.ciudad,
-                    phone: aval.telefono,
-                    nameJob: aval.trabajo,
-                    addressJob: aval.domicilioTrabajo,
-                    phoneJob: aval.telefonoTrabajo,
-                    garantias: {
-                        garantiaUno: garantiasArray[0] || '',
-                        garantiaDos: garantiasArray[1] || '',
-                        garantiaTres: garantiasArray[2] || ''
-                    }
-                }*/
+
+            //Pasar las garantias a un arreglo
+            const guarantors = guarantorDataResult.map(guarantor => {
+                const garantiasArray = guarantor.garantias
+                    ? guarantor.garantias.split('|')
+                    : [];
+                return {
+                    ...guarantor,
+                    garantias: garantiasArray
+                };
             });
+            console.log('guarantors: ', guarantors);
+
+            const guarantorData = guarantors.map(guarantor => {
+                return {
+                    guarantorId: guarantor.idAval,
+                    name: guarantor.nombre,
+                    paternalLn: guarantor.apellidoPaterno,
+                    maternalLn: guarantor.apellidoMaterno,
+                    age: guarantor.edad,
+                    address: guarantor.domicilio,
+                    colonia: guarantor.colonia,
+                    city: guarantor.ciudad,
+                    phone: guarantor.telefono,
+                    jobName: guarantor.trabajo,
+                    workAddress: guarantor.domicilioTrabajo,
+                    workPhone: guarantor.telefonoTrabajo,
+                    collateral: {
+                        firstCollateral:  guarantor.garantias[0] || '',
+                        secondCollateral:  guarantor.garantias[1] || '',
+                        thirdCollateral: guarantor.garantias[2] || ''
+                    }
+                }
+            });
+            console.log('guarantorData: ', guarantorData);
         
             return {
-                guarantorDataResult
+                guarantorData
             }
 
     } catch(error) {
