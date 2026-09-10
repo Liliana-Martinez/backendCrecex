@@ -135,7 +135,6 @@ async function getCollectionRate(idZona) {
   }
 }
 
-
 //Funcion para calcular los gastos de cobranza por zona, es decir, por promotora
 async function getCollectionExpenses(idZona) {
   let collectionExpenses = 0;
@@ -163,7 +162,7 @@ async function getCollectionExpenses(idZona) {
     INNER JOIN creditos c ON p.idCredito = c.idCredito
     INNER JOIN clientes cl ON c.idCliente = cl.idCliente
     WHERE
-      c.estado = 'activo'
+      c.estado IN ('activo', 'pagado')
       AND cl.idZona = ?
       AND p.fechaPagada BETWEEN ? AND ?`;
 
@@ -217,7 +216,7 @@ async function getExtras(idZona) {
       idZona = ?`;
   
   const staffQueryResult = await queryAsync(staffQuery, [idZona]);
-  console.log(staffQueryResult);
+  console.log('staffQuery: ', staffQueryResult);
   if (staffQueryResult.length > 0) {
     let promoter = staffQueryResult[0].promotor || null;
     let supervicion = staffQueryResult[0].supervisor || null;
@@ -225,11 +224,14 @@ async function getExtras(idZona) {
       //1. Obtener los IDs de las zonas que le pertenecen al (la) supervisor(a)
       const supervisorZonesQuery = `SELECT idZona FROM zonas WHERE supervisor = ?`;
       const supervisorZonesResult = await queryAsync(supervisorZonesQuery, [promoter]);
+      console.log('zonas del supervisor: ', supervisorZonesResult);
 
-      let expectedByZone = 0; 
-      let paidByZone = 0;
+      let expectedByZone = 0; //esperado por zona
+      let paidByZone = 0;//pagado por zona
       let totalGeneral = 0;
       let supervisionCommission = 0;
+      let totalCreditAmountAllZones = 0;
+      let percentagePaid = 0;
 
       //Recorrer cada zona del supervisor(a)
       for (const zone of supervisorZonesResult) {
@@ -244,7 +246,7 @@ async function getExtras(idZona) {
           INNER JOIN creditos c ON p.idCredito = c.idCredito
           INNER JOIN clientes cl ON c.idCliente = cl.idCliente
           WHERE
-            c.estado = 'activo'
+            c.estado IN ('activo', 'pagado')
             AND cl.idZona = ?
             AND fechaEsperada BETWEEN ? AND ?`;
         
@@ -252,6 +254,7 @@ async function getExtras(idZona) {
         const expectedTotal = expectedMoneyResult[0].totalCantidad || 0;
 
         expectedByZone += expectedTotal;
+        console.log('esperado por zona: ', expectedByZone);
 
         //Consulta para obtener el dinero pagado realmente
         const moneyPaidQuery = `
@@ -261,7 +264,7 @@ async function getExtras(idZona) {
           INNER JOIN creditos c ON p.idCredito = c.idCredito
           INNER JOIN clientes cl ON c.idCliente = cl.idCliente
           WHERE
-            c.estado = 'activo'
+            c.estado IN ('activo', 'pagado')
             AND cl.idZona = ?
             AND p.fechaPagada BETWEEN ? AND ?
             AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')`;
@@ -269,42 +272,57 @@ async function getExtras(idZona) {
         const moneyPaidResult = await queryAsync(moneyPaidQuery, [zoneId, startDate, endDate]);
         const totalPaid = moneyPaidResult[0]?.totalPagado || 0;
         const totalExtras = moneyPaidResult[0]?.totalExtras || 0;
+        console.log('totalExtras: ', totalExtras);
         totalGeneral = totalPaid + totalExtras;
         paidByZone += totalGeneral;
+        console.log('pagado realmente: ', paidByZone);
 
-        //Calcular la comision del supervisor(a)
-        if (paidByZone >= expectedByZone) { //Es decir 100% o mas
-          supervisionCommission = (paidByZone * 6) / 100;
-        } else {
-          //Saber primero el porcentaje que se entrego
-          const supervisionPercentage = ((paidByZone * 100) / expectedByZone).toFixed(2);
-          //Una vez conocido el porcentaje asignar la comision correspondiente
-          if (supervisionPercentage >= 95 && supervisionPercentage <= 99) {
-            supervisionCommission = (paidByZone * 5) / 100;
-          }  else if (supervisionPercentage >= 90 && supervisionPercentage <= 94) {
-            supervisionCommission = (paidByZone * 4) / 100;
-          } else if (supervisionPercentage >= 85 && supervisionPercentage <= 89) {
-            supervisionCommission = (paidByZone * 3) / 100;
-          } else if (supervisionPercentage >= 80 && supervisionPercentage <= 84) {
-            supervisionCommission = (paidByZone * 2) / 100;
-          } else if (supervisionPercentage >= 75 && supervisionPercentage <= 79) {
-            supervisionCommission = (paidByZone * 1) / 100;
+        //Obtener la suma de los montos del credito que prestaron en la semana
+        const creditAmountQuery = `
+          SELECT SUM(monto) AS total
+          FROM creditos c
+          INNER JOIN clientes cl ON c.idCliente = cl.idCliente
+          INNER JOIN zonas z ON cl.idZona = z.idZona
+          WHERE
+            c.estado = 'activo'
+            AND c.fechaEntrega BETWEEN ? AND ?
+            AND z.idZona = ?
+        `;
+
+        const totalCreditAmountResult = await queryAsync(creditAmountQuery, [startDate, endDate, zoneId]);
+        const totalCreditAmountByZone = totalCreditAmountResult[0]?.total || 0; //representa lo de una zona
+        totalCreditAmountAllZones += totalCreditAmountByZone; //representa la suma de las zonas
+        console.log('total de creditos dados en la semana por todas las zonas: ', totalCreditAmountAllZones);
+
+      }
+
+      //Tengo que calcular que porcentaje representa lo que se pago de lo que realmente se tuvo que haber pagado = percentagePaid
+      percentagePaid = Number(((paidByZone / expectedByZone) * 100).toFixed(2));
+
+      //Calcular la comision del supervisor(a)
+        if (percentagePaid >= 100) { //Es decir 100% o mas -> si percentagePaid = 100 o mas
+          supervisionCommission = (totalCreditAmountAllZones * 6) / 100;
+        } else if (percentagePaid >= 95 && percentagePaid <= 99) {
+            supervisionCommission = (totalCreditAmountAllZones * 5) / 100; //supervisionComission = (totalCreditosZonas * 5) 7 100
+          }  else if (percentagePaid >= 90 && percentagePaid <= 94) {
+            supervisionCommission = (totalCreditAmountAllZones * 4) / 100;
+          } else if (percentagePaid >= 85 && percentagePaid <= 89) {
+            supervisionCommission = (totalCreditAmountAllZones * 3) / 100;
+          } else if (percentagePaid >= 80 && percentagePaid <= 84) {
+            supervisionCommission = (totalCreditAmountAllZones * 2) / 100;
+          } else if (percentagePaid >= 75 && percentagePaid <= 79) {
+            supervisionCommission = (totalCreditAmountAllZones * 1) / 100;
           } else {
             supervisionCommission = 0;
           }
-        }
-
-        return supervisionCommission;
-
-      }
-    } else {
+        console.log('supervisionCommision: ', supervisionCommission);
+      return supervisionCommission;
+    } else { //en este else solo tengo que calcular adelantos
       console.log('La promotora NO es supervisora.');
     }
-  } else {
+  } else { 
     console.log('No hay registros para esta zona.')
   }
-  
-
 }
 
 module.exports = { 
