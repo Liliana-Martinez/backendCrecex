@@ -765,7 +765,7 @@ const createRenewCredit = async (req, res) => {
                                             SET
                                                 cantidadPagada = ?,
                                                 fechaPagada = CURDATE(),
-                                                estado = 'pagado'
+                                                estado = 'pagadoRenovacion'
                                             WHERE idCredito = ?
                                             AND estado = 'pendiente'
                                             ORDER BY numeroSemana
