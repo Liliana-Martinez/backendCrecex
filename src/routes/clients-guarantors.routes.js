@@ -8,7 +8,6 @@ router.post('/add/client', async (req, res) => {
     try {
         const { personalData, collateral } = req.body;
         const guarantees = Object.values(collateral);
-        console.log('PERSONAL DATA: ', personalData);
 
         //Validar que haya datos perosonales del cliente
         if (!personalData || typeof personalData !== 'object') {
@@ -90,7 +89,6 @@ router.put('/modify/client', async (req, res) => {
 
     try {
         const resultado = await clientGuarantor.updateClient(idCliente, dataToUpdate);
-        console.log('Resultado de actualizazion: ', resultado);
         return res.json({ message: 'Datos actualizados correctamente', data: resultado})
     } catch(error) {
         console.error('Error al modificar datos del cliente', error);
@@ -99,12 +97,12 @@ router.put('/modify/client', async (req, res) => {
 });
 
 router.put('/modify/guarantor', async (req, res) => {
-    const idAval = req.body.id;
+    const guarantorId = req.body.guarantorId;
     const dataToUpdate = req.body;
     delete dataToUpdate.id;
     
     try {
-        const resultado = await clientGuarantor.updateGuarantor(idAval, dataToUpdate);
+        const resultado = await clientGuarantor.updateGuarantor(guarantorId, dataToUpdate);
         console.log('Resultado de la actualizacion: ', resultado);
         return res.json({ message: 'Datos actualizados correctamente', data: resultado});
     } catch(error) {
@@ -114,3 +112,5 @@ router.put('/modify/guarantor', async (req, res) => {
 })
 
 module.exports = router;
+
+
