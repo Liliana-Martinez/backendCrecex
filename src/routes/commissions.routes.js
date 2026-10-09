@@ -22,10 +22,10 @@ router.post('/', async (req, res) => {
 
     try {
         const resultado = await commissionsController.saveCommission({ total, description});
-        return res.status(201).json({ message: 'Extra guardado correctamente', resultado });
+        return res.status(201).json({ message: 'Se guardó la comisión correctamente', resultado });
     } catch(error) {
-        console.error('Error al guardar el extra.', error);
-        return res.status(500).json({ error: 'Error al guardar el extra.'});
+        console.log('error al guardar la comision en caja:', error);
+        return res.status(500).json({ error: 'Error al guardar la comisión.'});
     }
 });
 

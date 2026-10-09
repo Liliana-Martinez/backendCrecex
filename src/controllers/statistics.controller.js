@@ -30,11 +30,7 @@ async function saveTransaction(transaction) {
         const movements = [];
 
         // 🟢 INGRESO
-        if (
-            transaction.income &&
-            transaction.income.amount &&
-            Number(transaction.income.amount) > 0
-        ) {
+        if ( transaction.income && transaction.income.amount && Number(transaction.income.amount) > 0) {
             movements.push({
                 tipoMovimiento: 'ingreso',
                 categoria: 'extra',
@@ -44,11 +40,7 @@ async function saveTransaction(transaction) {
         }
 
         // 🔴 EGRESO
-        if (
-            transaction.expense &&
-            transaction.expense.amount &&
-            Number(transaction.expense.amount) > 0
-        ) {
+        if ( transaction.expense && transaction.expense.amount && Number(transaction.expense.amount) > 0) {
             movements.push({
                 tipoMovimiento: 'egreso',
                 categoria: 'extra',
@@ -59,10 +51,8 @@ async function saveTransaction(transaction) {
 
         console.log('movements:', movements);
 
-        // 🗓️ Fecha actual
         const today = new Date();
 
-        // 🧠 Query
         const insertQuery = `
             INSERT INTO caja (fecha, tipoMovimiento, categoria, descripcion, monto)
             VALUES (?, ?, ?, ?, ?)
@@ -70,13 +60,7 @@ async function saveTransaction(transaction) {
 
         // 🔁 Insertar cada movimiento
         for (const m of movements) {
-            await queryAsync(insertQuery, [
-                today,
-                m.tipoMovimiento,
-                m.categoria,
-                m.descripcion,
-                m.monto
-            ]);
+            await queryAsync(insertQuery, [today, m.tipoMovimiento, m.categoria, m.descripcion, m.monto]);
         }
 
         return { message: 'Movimientos guardados correctamente' };
@@ -135,7 +119,7 @@ async function getFinancialReportByPeriod(reportType) {
             ), 0) AS totalPagos
         FROM pagos
         WHERE fechaPagada BETWEEN ? AND ?
-        AND estado IN('pagado', 'incompleto', 'atraso', 'pagoAtrasado')
+        AND estado IN('pagado', 'incompleto', 'atraso', 'pagoAtrasado', 'adelantadoIncompleto', 'adelantado')
         `;
         const [dailyResultPayments] = await queryAsync(dailyTotalPaymentsQuery, [todayFormatted, todayFormatted]);
         const dailyTotalPayments = dailyResultPayments.totalPagos;
@@ -157,6 +141,7 @@ async function getFinancialReportByPeriod(reportType) {
         SELECT COALESCE(SUM(efectivo), 0) AS totalCredits
         FROM creditos
         WHERE fechaEntrega BETWEEN ? AND ?
+        AND estado = 'activo'
         `;
         const [dailyResultCredits] = await queryAsync(dailyTotalCreditsQuery, [todayFormatted, todayFormatted]);
         const dailyTotalCredits = dailyResultCredits.totalCredits;
@@ -233,6 +218,7 @@ async function getFinancialReportByPeriod(reportType) {
             SELECT COALESCE(SUM(efectivo), 0) AS totalCredits
             FROM creditos
             WHERE fechaEntrega BETWEEN ? AND ?
+            AND estado = 'activo'
         `;
         const [creditsReportResult] = await queryAsync(totalCreditsReportQuery, [startDate, endDate]);
         const creditsReport = creditsReportResult.totalCredits;
@@ -472,7 +458,7 @@ async function getTotalPayments(reportType) {
         SELECT COALESCE(SUM(cantidadPagada), 0) AS totalCollectedAmount
         FROM pagos
         WHERE fechaPagada BETWEEN ? AND ?
-        AND tipoPago IN('efectivo', 'transferencia')
+        AND tipoPago IN ('pagado', 'efectivo', 'transferencia')
         AND estado IN('pagado', 'incompleto', 'atraso', 'pagadoAtrasado')`;
     const [totalCollectedAmountResult] = await queryAsync(totalCollectedAmountQuery, [startDate, endDate]);
     const totalCollectedAmount = totalCollectedAmountResult.totalCollectedAmount;
