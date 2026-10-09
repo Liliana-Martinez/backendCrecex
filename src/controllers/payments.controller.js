@@ -15,56 +15,33 @@ function queryAsync(query, params = []) {
 
 //Orquestador de registro de pagos 
 const registrarPagos = async (pagos) => {
-
   try {
-
     for (const pago of pagos) {
-
       const datosPago =
         prepararDatosPago(pago);
-
       const {
         idCredito,
         payment: montoInicial,
         lateFees: recargoExtra,
         paymentType
       } = datosPago;
-
       let monto =
         montoInicial;
-
       if (!idCredito) {
         continue;
       }
-
       const semanas =
-        await obtenerSemanasCredito(
-          idCredito
-        );
-
+        await obtenerSemanasCredito(idCredito);
       if (!semanas.length) {
         continue;
       }
-
-      const {
-        sabadoActual,
-        semanaActual,
-        pagoConAdeudo
-      } = prepararContextoPago(
+      const {sabadoActual,semanaActual,pagoConAdeudo} = prepararContextoPago(
         semanas
       );
-
       // Si el registro viene vacío, ignorarlo
-      if (
-        esRegistroVacio(
-          monto,
-          recargoExtra,
-          paymentType
-        )
-      ) {
+      if (esRegistroVacio(monto,recargoExtra,paymentType)) {
         continue;
       }
-
       // Solo cambia tipo de pago
       if (
         await procesarCambioTipoPago(
@@ -92,75 +69,35 @@ const registrarPagos = async (pagos) => {
       }
 
       // Registrar recargos
-      await registrarRecargo(
-        datosPago,
-        semanaActual,
-        pagoConAdeudo
-      );
-
+      await registrarRecargo(datosPago,semanaActual,pagoConAdeudo);
       // Semana actual
       monto =
-        await procesarSemanaActual(
-          monto,
-          paymentType,
-          semanas,
-          sabadoActual
-        );
-
+        await procesarSemanaActual(monto,paymentType,semanas,sabadoActual);
       // Atrasos
       monto =
-        await procesarAtrasos(
-          monto,
-          paymentType,
-          semanas
-        );
-
+        await procesarAtrasos(monto,paymentType,semanas);
       // Adelantos
       monto =
-        await procesarAdelantos(
-          monto,
-          paymentType,
-          montoInicial,
-          semanas,
-          sabadoActual,
-          semanaActual
-        );
-
+        await procesarAdelantos(monto,paymentType,montoInicial,semanas,sabadoActual,semanaActual);
       // Verificar si el crédito terminó
       const pendientes =
-        await obtenerPendientesCredito(
-          idCredito
-        );
-
+        await obtenerPendientesCredito(idCredito);
       if (pendientes === 0) {
-
-        await actualizarCreditoAPagado(
-          idCredito
-        );
-
-        await asignarPuntosPorCumplimiento(
-          idCredito
-        );
+        await actualizarCreditoAPagado(idCredito);
+        await asignarPuntosPorCumplimiento(idCredito);
       }
-
-      await actualizarClasificacionCredito(
-        idCredito
-      );
+      await actualizarClasificacionCredito(idCredito);
     }
-
     return {
       success: true,
       message:
         'Pagos registrados correctamente'
     };
-
   } catch (error) {
-
     console.error(
       'Error registrarPagos:',
       error
     );
-
     return {
       success: false,
       message:
@@ -179,41 +116,30 @@ const prepararDatosPago = (pago) => {
   };
 };
 const prepararContextoPago = (semanas) => {
-
   const sabadoActual =
     obtenerSabadoActual();
-
   const semanaActual =
     semanas.find(s => {
-
       const fecha =
         normalizarFecha(
           s.fechaEsperada
         );
-
       return (
         fecha.getTime() ===
         sabadoActual.getTime()
       );
     });
-
   const pagoConAdeudo =
     semanas.find(
       s => Number(s.adeudo || 0) > 0
     );
-
   return {
     sabadoActual,
     semanaActual,
     pagoConAdeudo
   };
 };
-const esRegistroVacio = (
-  monto,
-  recargoExtra,
-  paymentType
-) => {
-
+const esRegistroVacio = (monto,recargoExtra,paymentType) => {
   return (
     monto <= 0 &&
     recargoExtra <= 0 &&
@@ -221,85 +147,45 @@ const esRegistroVacio = (
       paymentType.trim() === '')
   );
 };
-const procesarCambioTipoPago = async (
-  idCredito,
-  monto,
-  recargoExtra,
-  paymentType,
-  semanaActual
-) => {
+const procesarCambioTipoPago = async (idCredito,monto,recargoExtra,paymentType,semanaActual) => {
   // Si hay monto o recargo, debe continuar con el procesamiento normal
-  if (
-    monto > 0 ||
-    recargoExtra > 0 ||
-    !paymentType
-  ) {
+  if (monto > 0 ||recargoExtra > 0 ||!paymentType) {
     return false;
   }
-
   if (semanaActual) {
     await actualizarTipoPago(
       semanaActual.idPago,
       paymentType
     );
   }
-
-  await actualizarClasificacionCredito(
-    idCredito
-  );
-
+  await actualizarClasificacionCredito(idCredito);
   return true;
 };
-const procesarAdeudo = async (
-  idCredito,
-  monto,
-  paymentType,
-  semanaActual,
-  pagoConAdeudo
-) => {
-  const semanaAdeudo =
-    semanaActual || pagoConAdeudo;
-
-  if (
-    paymentType !== 'pagado' ||
-    !semanaAdeudo ||
-    Number(semanaAdeudo.adeudo || 0) <= 0
-  ) {
+const procesarAdeudo = async (idCredito,monto,paymentType,semanaActual,pagoConAdeudo) => {
+  const semanaAdeudo =semanaActual || pagoConAdeudo;
+  if (paymentType !== 'pagado' ||!semanaAdeudo ||Number(semanaAdeudo.adeudo || 0) <= 0) {
     return false;
   }
-
   console.log('ENTRO A PAGAR ADEUDO');
-
-  console.log(
-    'Pago con adeudo:',
+  console.log('Pago con adeudo:',
     {
       idPago: semanaAdeudo.idPago,
       adeudo: semanaAdeudo.adeudo,
       tipoPago: semanaAdeudo.tipoPago
     }
   );
-
-  const adeudoActual =
-    Number(semanaAdeudo.adeudo || 0);
-
-  const nuevoAdeudo =
-    Math.max(
-      0,
-      adeudoActual - monto
-    );
-
+  const adeudoActual =Number(semanaAdeudo.adeudo || 0);
+  const nuevoAdeudo =Math.max(0,adeudoActual - monto);
   const tipoPagoFinal =
     nuevoAdeudo === 0
       ? 'pagado'
       : semanaAdeudo.tipoPago;
-
   console.log({
     adeudoActual,
     montoPagado: monto,
     nuevoAdeudo,
     tipoPagoFinal
   });
-
   const resultado =
     await queryAsync(
       `
@@ -314,36 +200,20 @@ const procesarAdeudo = async (
         semanaAdeudo.idPago
       ]
     );
-
   console.log(
     'Resultado UPDATE:',
     resultado
   );
 
-  await actualizarClasificacionCredito(
-    idCredito
-  );
-
+  await actualizarClasificacionCredito(idCredito);
   return true;
 };
-const registrarRecargo = async (
-  datosPago,
-  semanaActual,
-  pagoConAdeudo
-) => {
-  const {
-    payment,
-    lateFees,
-    paymentType
-  } = datosPago;
-
-  const semanaRecargo =
-    semanaActual || pagoConAdeudo;
-
+const registrarRecargo = async (datosPago,semanaActual,pagoConAdeudo) => {
+  const {payment,lateFees,paymentType} = datosPago;
+  const semanaRecargo =semanaActual || pagoConAdeudo;
   if (!semanaRecargo) {
     return;
   }
-
   await actualizarPago(
     semanaRecargo.idPago,
     semanaRecargo.cantidadPagada,
@@ -354,47 +224,18 @@ const registrarRecargo = async (
     true
   );
 };
-const procesarSemanaActual = async (
-  monto,
-  paymentType,
-  semanas,
-  sabadoActual
-) => {
-
+const procesarSemanaActual = async (monto,paymentType,semanas,sabadoActual) => {
   for (const semana of semanas) {
-
     if (monto <= 0) {
       break;
     }
-
-    const fecha =
-      normalizarFecha(
-        semana.fechaEsperada
-      );
-
-    const esActual =
-      fecha.getTime() ===
-      sabadoActual.getTime();
-
-    if (
-      esActual &&
-      [
-        'pendiente',
-        'falla',
-        'incompleto'
-      ].includes(
-        semana.estado
-      )
-    ) {
-
+    const fecha =normalizarFecha(semana.fechaEsperada);
+    const esActual = fecha.getTime() ===sabadoActual.getTime();
+    if (esActual &&['pendiente','falla','incompleto'].includes( semana.estado)) {
       const restante =
         Number(semana.cantidad) -
-        Number(
-          semana.cantidadPagada || 0
-        );
-
+        Number(semana.cantidadPagada || 0);
       if (monto >= restante) {
-
         await actualizarPago(
           semana.idPago,
           semana.cantidad,
@@ -404,11 +245,8 @@ const procesarSemanaActual = async (
           0,
           false
         );
-
         monto -= restante;
-
       } else {
-
         await actualizarPago(
           semana.idPago,
           Number(
@@ -420,43 +258,29 @@ const procesarSemanaActual = async (
           0,
           false
         );
-
         monto = 0;
       }
-
       break;
     }
   }
 
   return monto;
 };
-const procesarAtrasos = async (
-  monto,
-  paymentType,
-  semanas
-) => {
-
+const procesarAtrasos = async (monto,paymentType,semanas) => {
   for (const semana of semanas) {
-
     if (monto <= 0) {
       break;
     }
-
     if (semana.estado !== 'atraso') {
       continue;
     }
-
     const restante =
       Number(semana.cantidad) -
       Number(
         semana.cantidadPagada || 0
       );
-
     if (monto >= restante) {
-
-      const pagoAplicado =
-        restante;
-
+      const pagoAplicado = restante;
       await actualizarPago(
         semana.idPago,
         semana.cantidad,
@@ -467,14 +291,9 @@ const procesarAtrasos = async (
         false,
         pagoAplicado
       );
-
       monto -= restante;
-
     } else {
-
-      const pagoAplicado =
-        monto;
-
+      const pagoAplicado = monto;
       await actualizarPago(
         semana.idPago,
         Number(
@@ -487,61 +306,31 @@ const procesarAtrasos = async (
         false,
         pagoAplicado
       );
-
       monto = 0;
     }
   }
-
   return monto;
 };
-const procesarAdelantos = async (
-  monto,
-  paymentType,
-  payment,
-  semanas,
-  sabadoActual,
-  semanaActual
-) => {
-
+const procesarAdelantos = async (monto,paymentType,payment,semanas,sabadoActual,semanaActual) => {
   for (const semana of semanas) {
-
     if (monto <= 0) {
       break;
     }
-
     const fecha =
       normalizarFecha(
         semana.fechaEsperada
       );
-
     if (fecha <= sabadoActual) {
       continue;
     }
-
-    const pagado =
-      Number(
-        semana.cantidadPagada || 0
-      );
-
+    const pagado = Number(semana.cantidadPagada || 0);
     const esperado =
-      Number(
-        semana.cantidad
-      );
-
-    const restante =
-      esperado - pagado;
-
-    if (
-      [
-        'pendiente',
-        'adelantadoIncompleto'
-      ].includes(
-        semana.estado
-      )
+      Number(semana.cantidad);
+    const restante = esperado - pagado;
+    if (['pendiente','adelantadoIncompleto'].includes(
+        semana.estado)
     ) {
-
       if (monto >= restante) {
-
         await actualizarPago(
           semana.idPago,
           esperado,
@@ -553,11 +342,8 @@ const procesarAdelantos = async (
             : payment,
           !semanaActual
         );
-
         monto -= restante;
-
       } else {
-
         await actualizarPago(
           semana.idPago,
           pagado + monto,
@@ -569,12 +355,10 @@ const procesarAdelantos = async (
             : payment,
           !semanaActual
         );
-
         monto = 0;
       }
     }
   }
-
   return monto;
 };
 //Hasta aqui son sus funciones de registrar pagos 
@@ -584,30 +368,15 @@ const procesarAdelantos = async (
 //Orquestador de getCollectionRaate
 const getCollectionRate = async (idZona) => {
   try {
-    const {
-      startDate,
-      endDate
-    } = obtenerPeriodoCobranza();
-
+    const {startDate,endDate} = obtenerPeriodoCobranza();
     const sumAmount =
-      await obtenerMontoEsperadoCobranza(
-        idZona,
-        startDate,
-        endDate
-      );
-
-    const {
-      amountPaid,
-      extras
-    } = await obtenerMontoCobrado(
+      await obtenerMontoEsperadoCobranza(idZona,startDate,endDate);
+    const {amountPaid,extras} = await obtenerMontoCobrado(
       idZona,
       startDate,
       endDate
     );
-
-    const sumAmountPaid =
-      amountPaid + extras;
-
+    const sumAmountPaid =amountPaid + extras;
     console.log('Cobranza:', {
       startDate,
       endDate,
@@ -616,18 +385,15 @@ const getCollectionRate = async (idZona) => {
       extras,
       sumAmountPaid
     });
-
     return {
       sumAmount,
       sumAmountPaid
     };
-
   } catch (error) {
     console.log(
       'Error al obtener sumas de cobranza.',
       error
     );
-
     throw error;
   }
 };
@@ -636,21 +402,15 @@ const obtenerPeriodoCobranza = () => {
   const startDate = obtenerSabadoAnterior()
     .toISOString()
     .split('T')[0];
-
   const endDate = obtenerSiguienteSabado()
     .toISOString()
     .split('T')[0];
-
   return {
     startDate,
     endDate
   };
 };
-const obtenerMontoEsperadoCobranza = async (
-  idZona,
-  startDate,
-  endDate
-) => {
+const obtenerMontoEsperadoCobranza = async (idZona,startDate,endDate) => {
   const query = `
     SELECT SUM(p.cantidad) AS totalCantidad
     FROM pagos p
@@ -663,25 +423,15 @@ const obtenerMontoEsperadoCobranza = async (
       AND p.fechaEsperada >= ?
       AND p.fechaEsperada < ?
   `;
-
   const result = await queryAsync(
     query,
-    [
-      idZona,
-      startDate,
-      endDate
-    ]
+    [idZona,startDate,endDate]
   );
-
   return Number(
     result?.[0]?.totalCantidad ?? 0
   );
 };
-const obtenerMontoCobrado = async (
-  idZona,
-  startDate,
-  endDate
-) => {
+const obtenerMontoCobrado = async (idZona,startDate,endDate) => {
   const query = `
     SELECT 
       SUM(
@@ -695,7 +445,6 @@ const obtenerMontoCobrado = async (
           ELSE 0
         END
       ) AS totalPagado,
-
       SUM(
         CASE 
           WHEN p.estado IN (
@@ -706,7 +455,6 @@ const obtenerMontoCobrado = async (
           ELSE 0
         END
       ) AS totalExtras
-
     FROM pagos p
     INNER JOIN creditos c
       ON p.idCredito = c.idCredito
@@ -716,39 +464,20 @@ const obtenerMontoCobrado = async (
     WHERE 
       c.estado IN ('activo','pagado')
       AND cl.idZona = ?
-      AND (
-        (
-          p.estado IN (
-            'pagado',
-            'incompleto',
-            'adelantadoIncompleto'
-          )
+      AND ((p.estado IN ('pagado','incompleto','adelantadoIncompleto')
           AND p.fechaEsperada >= ?
           AND p.fechaEsperada < ?
         )
-        OR
-        (
-          p.estado IN (
-            'atraso',
-            'pagadoAtrasado'
-          )
+        OR (p.estado IN (atraso','pagadoAtrasado')
           AND p.fechaPagada >= ?
           AND p.fechaPagada < ?
         )
       )
   `;
-
   const result = await queryAsync(
     query,
-    [
-      idZona,
-      startDate,
-      endDate,
-      startDate,
-      endDate
-    ]
+    [idZona,startDate,endDate,startDate,endDate]
   );
-
   return {
     amountPaid: Number(
       result?.[0]?.totalPagado ?? 0
@@ -764,45 +493,30 @@ const obtenerMontoCobrado = async (
 // Orquestador getClientsFromZone Trae los datos de los clientes por zona
 const getClientsFromZone = async (idZona) => {
   console.log('ID en el controller:', idZona);
-
   const fechaEsperada = obtenerSabadoAnterior()
     .toISOString()
     .split('T')[0];
-
   const fechaSiguienteSemana = obtenerSiguienteSabado()
     .toISOString()
     .split('T')[0];
-
   try {
-    const results = await obtenerClientesDeZona(
-      idZona,
-      fechaEsperada
-    );
-
+    const results = await obtenerClientesDeZona(idZona,fechaEsperada);
     if (!results || results.length === 0) {
       return null;
     }
-
     const {
       codigoZona,
       promotor
     } = results[0];
-
-    const clientes = await calcularPagos(
-      results,
-      fechaEsperada
-    );
-
+    const clientes = await calcularPagos(results,fechaEsperada);
     let collectionRate = {
       sumAmount: 0,
       sumAmountPaid: 0
     };
-
     try {
       const result = await getCollectionRate(
         idZona
       );
-
       collectionRate = {
         sumAmount:
           result?.sumAmount ?? 0,
@@ -810,14 +524,12 @@ const getClientsFromZone = async (idZona) => {
         sumAmountPaid:
           result?.sumAmountPaid ?? 0
       };
-
     } catch (error) {
       console.error(
         'Error al calcular collectionRate:',
         error
       );
     }
-
     return {
       codigoZona,
       promotor,
@@ -825,21 +537,16 @@ const getClientsFromZone = async (idZona) => {
       clientes,
       collectionRate
     };
-
   } catch (error) {
     console.error(
       'Error procesando clientes:',
       error
     );
-
     throw error;
   }
 };
 //Funciones de getClientesFromZone
-const obtenerClientesDeZona = (
-  idZona,
-  fechaEsperada
-) => {
+const obtenerClientesDeZona = (idZona,fechaEsperada) => {
   return new Promise((resolve, reject) => {
     const query = `
       SELECT
@@ -878,9 +585,8 @@ const obtenerClientesDeZona = (
       JOIN zonas AS z
         ON c.idZona = z.idZona
       WHERE c.idZona = ?
-      AND cr.estado = 'Activo'
+      AND cr.estado IN ('Activo', 'Vencido')
     `;
-
     db.query(
       query,
       [fechaEsperada, idZona],
@@ -888,20 +594,15 @@ const obtenerClientesDeZona = (
         if (error) {
           return reject(error);
         }
-
         resolve(results);
       }
     );
   });
 };
-async function calcularPagos(
-  clientes,
-  fechaEsperada
-) {
+async function calcularPagos(clientes,fechaEsperada) {
   const results = await Promise.all(
     clientes.map(cliente => {
       return new Promise((resolve, reject) => {
-
         const pagosQuery = `
           SELECT
             cantidad,
@@ -915,43 +616,31 @@ async function calcularPagos(
           WHERE idCredito = ?
           ORDER BY fechaEsperada
         `;
-
         db.query(
           pagosQuery,
           [cliente.idCredito],
           (err, pagos) => {
-
             if (err) {
               return reject(err);
             }
-
             const {
               atraso,
               adelanto,
               falla
-            } = calcularEstadoDePagosOrdenado(
-              pagos,
-              fechaEsperada
-            );
-
+            } = calcularEstadoDePagosOrdenado(pagos,fechaEsperada);
             let adeudo = null;
-
             const pagoConAdeudo = pagos.find(
               p => Number(p.adeudo || 0) > 0
             );
-
             if (pagoConAdeudo) {
               adeudo = pagoConAdeudo.adeudo;
             }
-
             resolve({
               ...cliente,
-
               numeroCreditos:
                 cliente.tipoCredito?.toLowerCase() === 'adicional'
                   ? 'AD'
                   : cliente.numeroCreditos,
-
               adeudo,
               atraso,
               adelanto,
@@ -967,12 +656,12 @@ async function calcularPagos(
 }
 //Hasta aqui gunciones de getClientsFromZone
 
+//Funciones generales
 function normalizarFecha(fecha) {
   const nuevaFecha = new Date(fecha);
   nuevaFecha.setHours(0, 0, 0, 0);
   return nuevaFecha;
 }
-
 function obtenerSabadoActual() {
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
@@ -985,7 +674,6 @@ function obtenerSabadoActual() {
   sabadoActual.setHours(0, 0, 0, 0);
   return sabadoActual;
 }
-
 function obtenerSabadoAnterior() {
   const hoy = new Date();
   const sabadoAnterior = new Date(hoy);
@@ -997,7 +685,6 @@ function obtenerSabadoAnterior() {
   sabadoAnterior.setHours(0, 0, 0, 0);
   return sabadoAnterior;
 }
-
 function obtenerSiguienteSabado() {
   const hoy = new Date();
   const siguienteSabado = new Date(hoy);
@@ -1027,6 +714,7 @@ function esMismaSemana(fecha1, fecha2) {
     obtenerInicioSemana(fecha2).getTime()
   );
 }
+//Acaban funciones generales
 
 // Obtener semanas/pagos de un crédito
 async function obtenerSemanasCredito(idCredito) {
@@ -1058,17 +746,13 @@ async function obtenerPendientesCredito(idCredito) {
   return rows[0].total;
 }
 // Actualizar tipo de pago
-async function actualizarTipoPago(
-  idPago,
-  paymentType
-) {
+async function actualizarTipoPago(idPago,paymentType) {
   const query = `
     UPDATE pagos
     SET tipoPago = ?,
         fechaPagada = CURDATE()
     WHERE idPago = ?
   `;
-
   return await queryAsync(query, [
     paymentType,
     idPago
@@ -1085,12 +769,7 @@ async function obtenerPagoPorId(idPago) {
   return rows[0];
 }
 //Obtener los pagos que ha realizado el cliente
-
-
-function calcularEstadoDePagosOrdenado(
-  pagos,
-  fechaReferencia
-) {
+function calcularEstadoDePagosOrdenado(pagos,fechaReferencia) {
   const ref =
     new Date(fechaReferencia);
   let adelantoDisponible = 0;
@@ -1117,10 +796,7 @@ function calcularEstadoDePagosOrdenado(
         cantidad - pagado;
     }
     //Fallas
-    if (
-      estado === 'falla' ||
-      estado === 'incompleto'
-    ) {
+    if (estado === 'falla' ||estado === 'incompleto') {
       falla +=
         cantidad - pagado;
     }
@@ -1140,53 +816,25 @@ function calcularEstadoDePagosOrdenado(
     falla
   };
 }
-
-
 //Actualizacion de estados de los pagos
-const actualizarPago = async (
-  idPago,
-  cantidadPagada,
-  nuevoEstado,
-  recargoExtra = 0,
-  tipoPago = 'efectivo',
-  adeudoRecibido = 0,
-  esSemanaActual = false,
-  extra = 0
-) => {
+const actualizarPago = async (idPago,cantidadPagada,nuevoEstado,recargoExtra = 0,tipoPago = 'efectivo',adeudoRecibido = 0,esSemanaActual = false,extra = 0) => {
   try {
     const pagoActual =
       await obtenerPagoPorId(idPago);
-
     if (!pagoActual) {
       throw new Error('Pago no encontrado');
     }
-
-    const adeudoActual =
-      Number(pagoActual.adeudo || 0);
-
-    const recargoActual =
-      Number(pagoActual.recargos || 0);
-
-    const extrasActual =
-      Number(pagoActual.extras || 0);
-
-    const fechaPagadaActual =
-      pagoActual.fechaPagada;
-
-    const nuevoRecargo =
-      recargoActual + recargoExtra;
-
-    let nuevoAdeudo =
-      adeudoActual;
-
-    let nuevoExtra =
-      extrasActual;
-
+    const adeudoActual =Number(pagoActual.adeudo || 0);
+    const recargoActual =Number(pagoActual.recargos || 0);
+    const extrasActual =Number(pagoActual.extras || 0);
+    const fechaPagadaActual =pagoActual.fechaPagada;
+    const nuevoRecargo =recargoActual + recargoExtra;
+    let nuevoAdeudo =adeudoActual;
+    let nuevoExtra =extrasActual;
     // Si viene valor para extras
     if (extra > 0) {
       const hoy =
         new Date();
-
       if (
         fechaPagadaActual &&
         esMismaSemana(
@@ -1204,23 +852,16 @@ const actualizarPago = async (
       }
     }
 
-    if (
-      tipoPago === 'efectivo' &&
-      esSemanaActual
-    ) {
+    if (tipoPago === 'efectivo' &&esSemanaActual) {
       nuevoAdeudo =
         adeudoActual +
-        Number(
-          adeudoRecibido || 0
-        );
+        Number(adeudoRecibido || 0);
     }
-
-    // ✅ Si llega vacío o null, conserva el tipo de pago actual
+    //  Si llega vacío o null, conserva el tipo de pago actual
     const tipoPagoFinal =
       tipoPago && tipoPago.trim() !== ''
         ? tipoPago
         : pagoActual.tipoPago;
-
     const query = `
       UPDATE pagos
       SET cantidadPagada = ?,
@@ -1232,17 +873,7 @@ const actualizarPago = async (
           extras = ?
       WHERE idPago = ?
     `;
-
-    const params = [
-      cantidadPagada,
-      nuevoEstado,
-      nuevoRecargo,
-      tipoPagoFinal,
-      nuevoAdeudo,
-      nuevoExtra,
-      idPago
-    ];
-
+    const params = [cantidadPagada,nuevoEstado,nuevoRecargo,tipoPagoFinal,nuevoAdeudo,nuevoExtra,idPago];
     console.log({
       idPago,
       tipoPago: tipoPagoFinal,
@@ -1250,12 +881,10 @@ const actualizarPago = async (
       nuevoEstado,
       nuevoAdeudo
     });
-
     console.log(
       'ACTUALIZANDO PAGO:',
       params
     );
-
     return await queryAsync(
       query,
       params
@@ -1268,17 +897,15 @@ const actualizarPago = async (
     throw error;
   }
 };
+
 //Actualizacion de los pagos de una semana a la que sigue 
-const actualizarCreditoAPagado = async (
-  idCredito
-) => {
+const actualizarCreditoAPagado = async (idCredito) => {
   try {
     const query = `
       UPDATE creditos
       SET estado = ?
       WHERE idCredito = ?
     `;
-    
     return await queryAsync(query, [
       'Pagado',
       idCredito
@@ -1291,7 +918,6 @@ const actualizarCreditoAPagado = async (
     throw error;
   }
 };
-
 async function actualizarEstadosAtrasos() {
   try {
     const sabadoAnterior =
@@ -1304,10 +930,7 @@ async function actualizarEstadosAtrasos() {
       UPDATE pagos
       SET estado = 'atraso'
       WHERE fechaEsperada = ?
-      AND estado IN (
-        'falla',
-        'incompleto'
-      )
+      AND estado IN ('falla','incompleto')
     `;
     await queryAsync(query, [fechaStr]);
     console.log(
@@ -1320,7 +943,6 @@ async function actualizarEstadosAtrasos() {
     );
   }
 }
-
 async function actualizarEstadosAdelantos() {
   try {
     const hoy = new Date();
@@ -1332,12 +954,7 @@ async function actualizarEstadosAdelantos() {
     sabadoAnterior.setDate(
       hoy.getDate() - diffToSaturday + 7
     );
-    sabadoAnterior.setHours(
-      0,
-      0,
-      0,
-      0
-    );
+    sabadoAnterior.setHours(0,0,0,0);
     const fechaStr =
       sabadoAnterior
         .toISOString()
@@ -1374,7 +991,6 @@ async function actualizarEstadosAdelantos() {
   }
 
 }
-
 async function actualizarEstadosFalla() {
   try {
     const sabadoAnterior =
@@ -1387,10 +1003,7 @@ async function actualizarEstadosFalla() {
       UPDATE pagos
       SET estado = 'falla'
       WHERE fechaEsperada = ?
-      AND (
-        estado = 'pendiente'
-        OR estado = 'incompleto'
-      )
+      AND (estado = 'pendiente'OR estado = 'incompleto')
     `;
     const result =
       await queryAsync(query, [fechaStr]);
@@ -1410,9 +1023,7 @@ async function actualizarEstadosFalla() {
   }
 }
 //Se actualiza la clasificacion de los creditos cada pago que den
-const actualizarClasificacionCredito = async (
-  idCredito
-) => {
+const actualizarClasificacionCredito = async (idCredito) => {
   try {
     const sabadoActual =
       obtenerSabadoActual();
@@ -1450,10 +1061,7 @@ const actualizarClasificacionCredito = async (
     if (fallas >= 1 && fallas <= 2) {
       cumplimiento = 'Bueno';
     }
-    else if (
-      fallas >= 3 &&
-      fallas <= 4
-    ) {
+    else if (fallas >= 3 && fallas <= 4) {
       cumplimiento = 'Regular';
     }
     else if (fallas >= 5) {
@@ -1480,9 +1088,7 @@ const actualizarClasificacionCredito = async (
   }
 };
 //Se dan puntos segun el cumplimient del cliente
-const asignarPuntosPorCumplimiento = async (
-  idCredito
-) => {
+const asignarPuntosPorCumplimiento = async (idCredito) => {
   try {
     const queryCredito = `
       SELECT
@@ -1505,23 +1111,17 @@ const asignarPuntosPorCumplimiento = async (
       monto,
       idCliente
     } = result;
-    if (
-      !['Excelente', 'Bueno']
-        .includes(cumplimiento)
-    ) {
+    if (!['Excelente', 'Bueno'].includes(cumplimiento)) {
       return;
     }
     const porcentaje =
       cumplimiento === 'Excelente'
         ? 0.03
         : 0.015;
-    const puntosGanados =
-      Math.round(monto * porcentaje);
+    const puntosGanados = Math.round(monto * porcentaje);
     //Actualiz apuntos
-    const queryPuntos = `
-      UPDATE clientes
-      SET puntos =
-        IFNULL(puntos, 0) + ?
+    const queryPuntos = `UPDATE clientes
+      SET puntos =IFNULL(puntos, 0) + ?
       WHERE idCliente = ?
     `;
     await queryAsync(queryPuntos, [
@@ -1538,9 +1138,281 @@ const asignarPuntosPorCumplimiento = async (
     );
   }
 };
+// Maneja los creditos vencidos
+
+const procesarCreditosVencidos = async () => {
+  try {
+    const hoy = normalizarFecha(new Date());
+    console.log('PROCESANDO CRÉDITOS VENCIDOS');
+    console.log('Fecha de proceso:',formatearFechaSQL(hoy));
+    
+    //Activo a vencido
+    const creditosParaVencer =
+      await queryAsync(
+        `
+        SELECT
+          idCredito,
+          fechaVencimiento,
+          semanas
+        FROM creditos
+        WHERE LOWER(estado) = 'activo'
+          AND fechaVencimiento < ?
+        `,
+        [
+          formatearFechaSQL(hoy)
+        ]
+      );
+    console.log('Créditos que pueden pasar a vencido:',creditosParaVencer.length);
+    for (const credito of creditosParaVencer) {
+      await queryAsync(
+        `
+        UPDATE creditos
+        SET estado = 'vencido'
+        WHERE idCredito = ?
+          AND LOWER(estado) = 'activo'
+        `,
+        [credito.idCredito]
+      );
+      console.log(`Crédito ${credito.idCredito} → VENCIDO`);
+    }
+    //Agregar semana extra una vez que el credito esta vencido
+    const creditosVencidos =
+      await queryAsync(
+        `
+        SELECT
+          idCredito,
+          semanas,
+          abonoSemanal,
+          fechaVencimiento
+        FROM creditos
+        WHERE LOWER(estado) = 'vencido'
+        `
+      );
+    console.log('Créditos actualmente vencidos:',creditosVencidos.length);
+    for (const credito of creditosVencidos) {
+      const semanasActuales =
+        Number(credito.semanas);
+      console.log('CRÉDITO VENCIDO:',{
+          idCredito:
+            credito.idCredito,
+          semanas:
+            semanasActuales,
+          fechaVencimiento:
+            credito.fechaVencimiento,
+          abonoSemanal:
+            credito.abonoSemanal
+        }
+      );
+      //Verifica si ya se le habia o no agregado semana extr
+      if (semanasActuales !== 12 &&semanasActuales !== 16) {
+        console.log(
+          `Crédito ${credito.idCredito}: ` +
+          `ya tiene ${semanasActuales} semanas, ` +
+          `no se agrega otra.`
+        );
+        continue;
+      }
+      const fechaVencimiento =normalizarFecha(credito.fechaVencimiento);
+      const fechaProcesarSemanaExtra =
+        new Date(fechaVencimiento);
+      fechaProcesarSemanaExtra.setDate(
+        fechaProcesarSemanaExtra.getDate() + 12
+      );
+      console.log('VALIDANDO SEMANA EXTRA:',{
+          idCredito:
+            credito.idCredito,
+          semanasActuales,
+          hoy:
+            formatearFechaSQL(hoy),
+          fechaVencimiento:
+            formatearFechaSQL(
+              fechaVencimiento
+            ),
+          fechaProcesarSemanaExtra:
+            formatearFechaSQL(
+              fechaProcesarSemanaExtra
+            )
+        }
+      );
+
+      if (hoy <fechaProcesarSemanaExtra) {
+        console.log(`Crédito ${credito.idCredito}: ` +`todavía no corresponde agregar semana.`);
+        continue;
+      }
+
+      const numeroSemanaExtra =
+        semanasActuales + 1;
+      const pagoExistente =
+        await queryAsync(
+          `
+          SELECT idPago
+          FROM pagos
+          WHERE idCredito = ?
+            AND numeroSemana = ?
+          LIMIT 1
+          `,
+          [
+            credito.idCredito,
+            numeroSemanaExtra
+          ]
+        );
+
+      if (pagoExistente &&pagoExistente.length > 0) {
+        console.log(`Crédito ${credito.idCredito}: ` +
+          `el pago de la semana ${numeroSemanaExtra} ` +
+          `ya existe.`
+        );
+        await queryAsync(
+          `
+          UPDATE creditos
+          SET semanas = ?
+          WHERE idCredito = ?
+            AND LOWER(estado) = 'vencido'
+          `,
+          [numeroSemanaExtra,credito.idCredito]
+        );
+        continue;
+      }
+      const fechaSemanaExtra =
+        new Date(fechaVencimiento);
+      fechaSemanaExtra.setDate(fechaSemanaExtra.getDate() + 7);
+      console.log('CREANDO SEMANA EXTRA:',
+        {
+          idCredito:
+            credito.idCredito,
+
+          numeroSemana:
+            numeroSemanaExtra,
+
+          cantidad:
+            credito.abonoSemanal,
+
+          fechaEsperada:
+            formatearFechaSQL(
+              fechaSemanaExtra
+            )
+        }
+      );
+      await crearPagoSemanaExtra(
+        credito.idCredito,
+        numeroSemanaExtra,
+        credito.abonoSemanal,
+        fechaSemanaExtra
+      );
+      await queryAsync(
+        `
+        UPDATE creditos
+        SET semanas = ?
+        WHERE idCredito = ?
+          AND LOWER(estado) = 'vencido'
+        `,
+        [numeroSemanaExtra,credito.idCredito]
+      );
+      console.log(`Crédito ${credito.idCredito}: ` +`${semanasActuales} → ${numeroSemanaExtra}`);
+    }
+
+
+    //Al pasar 4 meses sale de la lista de la promotora y se cambia a estado cobranza
+    const creditosParaCobranza =
+      await queryAsync(
+        `
+        SELECT
+          idCredito,
+          fechaVencimiento
+        FROM creditos
+        WHERE LOWER(estado) = 'vencido'
+        `
+      );
+    console.log('Créditos a revisar para cobranza:',creditosParaCobranza.length);
+    for (const credito of creditosParaCobranza) {
+      const fechaVencimiento =normalizarFecha(credito.fechaVencimiento);
+      const fechaCobranza =new Date(fechaVencimiento);
+      fechaCobranza.setMonth(
+        fechaCobranza.getMonth() + 4
+      );
+      console.log('VALIDANDO COBRANZA:',{
+          idCredito:
+           credito.idCredito,
+          fechaVencimiento:
+            formatearFechaSQL(
+              fechaVencimiento
+            ),
+          fechaCobranza:
+            formatearFechaSQL(
+              fechaCobranza
+            ),
+
+          hoy:
+            formatearFechaSQL(hoy)
+        }
+      );
+      if (hoy >=fechaCobranza) {
+        await queryAsync(
+          `
+          UPDATE creditos
+          SET estado = 'cobranza'
+          WHERE idCredito = ?
+            AND LOWER(estado) = 'vencido'
+          `,
+          [credito.idCredito]
+        );
+        console.log(`Crédito ${credito.idCredito} → COBRANZA`);
+      }
+    }
+    console.log('PROCESAMIENTO DE CRÉDITOS TERMINADO');
+    return {
+      success: true,
+      message:
+        'Créditos vencidos procesados correctamente'
+    };
+  } catch (error) {
+    console.error(
+      'Error procesando créditos vencidos:',
+      error
+    );
+    return {
+      success: false,
+      message:
+        'Error al procesar créditos vencidos'
+    };
+  }
+};
+const crearPagoSemanaExtra = async (idCredito,numeroSemana,cantidad,fechaEsperada) => {
+  const query = `
+    INSERT INTO pagos
+    (
+      idCredito,
+      numeroSemana,
+      cantidad,
+      fechaEsperada,
+      cantidadPagada,
+      estado
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+  `;
+  await queryAsync(
+    query,
+    [
+      idCredito,
+      numeroSemana,
+      cantidad,
+      formatearFechaSQL(
+        fechaEsperada
+      ),
+      0,
+      'atraso'
+    ]
+  );
+};
+const formatearFechaSQL = (fecha) => {
+  const año =fecha.getFullYear();
+  const mes =String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia =String(fecha.getDate()).padStart(2, '0');
+  return `${año}-${mes}-${dia}`;
+};
 
 module.exports = {
-   getClientsFromZone,
+  getClientsFromZone,
   calcularPagos,
   calcularEstadoDePagosOrdenado,
   registrarPagos,
@@ -1550,5 +1422,6 @@ module.exports = {
   actualizarEstadosAdelantos,
   actualizarEstadosFalla,
   actualizarClasificacionCredito,
-  asignarPuntosPorCumplimiento
+  asignarPuntosPorCumplimiento,
+  procesarCreditosVencidos
 };
