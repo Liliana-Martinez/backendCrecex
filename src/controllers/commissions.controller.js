@@ -23,19 +23,26 @@ function queryAsync(sql, params = []) {
 }
 
 const getCommissionsByZone = async (idZona) => {
-  const collectionRate = Number(await getCollectionRate(idZona)) || 0;//Columna porcentaje de cobranza
+  //const collectionRate = Number(await getCollectionRate(idZona)) || 0;//Columna porcentaje de cobranza
+  const collectionRateData = await getCollectionRate(idZona);
+  const collectionRate = Number(collectionRateData?.collectionRate) || 0;
   const collectionExpenses = Number(await getCollectionExpenses(idZona)) || 0;//Columna gastos de cobranza
   const numberCredits = Number(await getTotalCredits(idZona)) || 0; //Numero de creditos
   const extras = Number(await getExtras(idZona)) || 0; //Extras*/
 
-  const total = collectionRate + collectionExpenses + numberCredits + extras;
+  const total = Number((collectionRate + collectionExpenses + numberCredits + extras).toFixed(2)) || 0;
 
   return {
     collectionRate,
     collectionExpenses,
     numberCredits,
     extras,
-    total
+    total,
+    totalExpected: collectionRateData?.totalExpected,
+    totalCollected: collectionRateData?.totalCollected,
+    collectionPercentage: collectionRateData?.collectionPercentage,
+    commissionPercentage: collectionRateData?.commissionPercentage,
+    promotor: collectionRateData?.promoter
   };
 }
 
@@ -68,7 +75,7 @@ async function getCollectionRate(idZona) {
     //Consulta para obtener la sumatoria de "cantidadPagada" que representa lo que al final cobraron en total en la semana las promotoras
     const sumAmountPaid = `
       SELECT
-        SUM(cantidadPagada) AS totalCantidadPagada,
+        SUM(cantidadPagada) AS totalPaidAmount,
         SUM(extras) AS totalExtras
       FROM pagos p
       INNER JOIN creditos c ON p.idCredito = c.idCredito
@@ -80,7 +87,7 @@ async function getCollectionRate(idZona) {
         AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')
       `;
     const resultSumAmountPaid = await queryAsync(sumAmountPaid, [idZona,startDate,endDate]);
-    const amountPaid = Number(resultSumAmountPaid[0]?.totalCantidadPagada) || 0;
+    const amountPaid = Number(resultSumAmountPaid[0]?.totalPaidAmount) || 0;
     const extras = Number(resultSumAmountPaid[0]?.totalExtras) || 0;
     const totalPaid = amountPaid + extras;
 
@@ -113,12 +120,12 @@ async function getCollectionRate(idZona) {
     collectionRate = Number(((totalPaid * commissionPercentage) / 100).toFixed(2));
     
     return {
-      totalExpected: total,               // Lo que se debía cobrar
-      totalCollected: totalPaid,          // Lo que realmente se cobró
-      collectionPercentage: percentage,   // % al que cerró la promotora
-      commissionPercentage,               // % de comisión que se le pagaraa
-      collectionRate,                     // Comisión, dinerito :) ------
-      promoter
+        totalExpected: total,               // Lo que se debía cobrar
+        totalCollected: totalPaid,          // Lo que realmente se cobró
+        collectionPercentage: percentage,   // % al que cerró la promotora
+        commissionPercentage,               // % de comisión que se le pagaraa
+        collectionRate,                     // Comisión, dinerito :) ------
+        promoter
     };
 
   } catch (error) {
@@ -143,8 +150,7 @@ async function getCollectionExpenses(idZona) {
       AND c.fechaEntrega BETWEEN ? AND ?
   `;
   const resultSumCreditSurcharges = await queryAsync(sumCreditSurcharges, [idZona, startDate, endDate]);
-  const creditSurcharges = resultSumCreditSurcharges[0]?.totalRecargos || 0;
-  //console.log('recargos de la tabla creditos: ', creditSurcharges);
+  const creditSurcharges = Number(resultSumCreditSurcharges[0]?.totalRecargos) || 0;
 
   //Consulta para obtener los recargos de la tabla 'pagos'
   const sumPaymentSurcharges = `
@@ -158,7 +164,7 @@ async function getCollectionExpenses(idZona) {
       AND p.fechaPagada BETWEEN ? AND ?
     `;
   const resultPaymentSurcharges = await queryAsync(sumPaymentSurcharges, [idZona, startDate, endDate]);
-  const paymentSurcharges = resultPaymentSurcharges[0]?.totalRecargos || 0;
+  const paymentSurcharges = Number(resultPaymentSurcharges[0]?.totalRecargos) || 0;
   //console.log('recargos de la tabla creditos: ', paymentSurcharges);
 
   collectionExpenses = creditSurcharges + paymentSurcharges;
@@ -169,7 +175,7 @@ async function getCollectionExpenses(idZona) {
 //Funcion para obtener la cantidad de creditos que hubo por semana por zona
 async function getTotalCredits(idZona) {
   const numberCredits = `
-    SELECT COUNT(*) AS totalCreditos
+    SELECT COUNT(*) AS totalCredits
     FROM creditos c
     INNER JOIN clientes cl ON c.idCliente = cl.idCliente
     WHERE
@@ -178,8 +184,7 @@ async function getTotalCredits(idZona) {
       AND c.fechaEntrega BETWEEN ? AND ?
   `;
   const resultNumberCredits = await queryAsync(numberCredits, [idZona, startDate, endDate]);
-  const totalCredits = (resultNumberCredits[0]?.totalCreditos || 0) * 100;
-  //console.log('totalCredits: ', totalCredits);
+  const totalCredits = (Number(resultNumberCredits[0]?.totalCredits) || 0) * 100;
 
   return totalCredits;
 }
@@ -204,12 +209,11 @@ async function getExtras(idZona) {
   `;
   const resultSumAmount = await queryAsync(sumAmount, [idZona,startDate,endDate]);
   const total = Number(resultSumAmount[0]?.totalCantidad) || 0;
-  console.log('total por pagar: ', total);
 
   //Consulta para obtener la sumatoria de "cantidadPagada" que representa lo que al final cobraron en total en la semana las promotoras
   const sumAmountPaid = `
     SELECT
-      SUM(cantidadPagada) AS totalCantidadPagada,
+      SUM(cantidadPagada) AS totalPaidAmount,
       SUM(extras) AS totalExtras
       FROM pagos p
       INNER JOIN creditos c ON p.idCredito = c.idCredito
@@ -221,14 +225,13 @@ async function getExtras(idZona) {
         AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')
   `;
   const resultSumAmountPaid = await queryAsync(sumAmountPaid, [idZona,startDate,endDate]);
-  const amountPaid = Number(resultSumAmountPaid[0]?.totalCantidadPagada) || 0;
+  const amountPaid = Number(resultSumAmountPaid[0]?.totalPaidAmount) || 0;
   const extras = Number(resultSumAmountPaid[0]?.totalExtras) || 0;
   const totalPaid = amountPaid + extras;
-  console.log('total pagado: ', totalPaid);
 
   //Obtener los pagos que son adelantos
   const advancePaymentQuery = `
-    SELECT SUM(cantidadPagada) AS totalCantidad
+    SELECT SUM(cantidadPagada) AS totalAmount
     FROM pagos p
     INNER JOIN creditos c ON p.idCredito = c.idCredito
     INNER JOIN clientes cl ON c.idCliente = cl.idCliente
@@ -239,8 +242,7 @@ async function getExtras(idZona) {
       AND p.fechaPagada BETWEEN ? AND ?
   `;
   const resultAdvancePayment = await queryAsync(advancePaymentQuery, [idZona, startDate, endDate]);
-  const advancePaymentAmount= resultAdvancePayment[0]?.totalCantidad || 0;
-  console.log('pagos de adelantos: ', advancePaymentAmount);
+  const advancePaymentAmount= Number(resultAdvancePayment[0]?.totalAmount) || 0;
 
   //comparar el resultado de "cantidad" con "cantidadPagada" para obtener los porcentajes
   if (total > 0) {
@@ -270,7 +272,6 @@ async function getExtras(idZona) {
   
   // Calcular la comisión
   collectionRate = Number(((advancePaymentAmount * commissionPercentage) / 100).toFixed(2));
-  console.log('collectionRate:  ', collectionRate);
 
   //Obtener los supervisores (no repetidos y no nulos) para guardarlos en una lista
   const supervisorsListQuery = `
@@ -295,7 +296,7 @@ async function getExtras(idZona) {
   
   if (staffQueryResult.length > 0) {
     let promoter = staffQueryResult[0].promotor || null;
-    let supervicion = staffQueryResult[0].supervisor || null;
+    //let supervicion = staffQueryResult[0].supervisor || null;
     if (supervisorsList.includes(promoter)) {
       //1. Obtener los IDs de las zonas que le pertenecen al (la) supervisor(a)
       const supervisorZonesQuery = `SELECT idZona FROM zonas WHERE supervisor = ?`;
@@ -313,8 +314,6 @@ async function getExtras(idZona) {
       for (const zone of supervisorZonesResult) {
         const zoneId = zone.idZona;
 
-        ///console.log('Zona en proceso: ', zoneId);
-
         //Consulta para obtener el dinero total que se debe de dar en la semana
         const expectedMoneyQuery = `
           SELECT SUM(cantidad) as totalCantidad
@@ -327,7 +326,7 @@ async function getExtras(idZona) {
             AND fechaEsperada BETWEEN ? AND ?
           `;
         const expectedMoneyResult = await queryAsync(expectedMoneyQuery, [zoneId, startDate, endDate]);
-        const expectedTotal = expectedMoneyResult[0].totalCantidad || 0;
+        const expectedTotal = Number(expectedMoneyResult[0].totalCantidad) || 0;
 
         expectedByZone += expectedTotal;
         //console.log('esperado por zona: ', expectedByZone);
@@ -346,8 +345,8 @@ async function getExtras(idZona) {
             AND p.estado IN ('pagado', 'incompleto', 'pagadoAtrasado', 'atraso')
         `;
         const moneyPaidResult = await queryAsync(moneyPaidQuery, [zoneId, startDate, endDate]);
-        const totalPaid = moneyPaidResult[0]?.totalPagado || 0;
-        const totalExtras = moneyPaidResult[0]?.totalExtras || 0;
+        const totalPaid = Number(moneyPaidResult[0]?.totalPagado) || 0;
+        const totalExtras = Number(moneyPaidResult[0]?.totalExtras) || 0;
         //console.log('totalExtras: ', totalExtras);
         totalGeneral = totalPaid + totalExtras;
         paidByZone += totalGeneral;
@@ -365,7 +364,7 @@ async function getExtras(idZona) {
             AND z.idZona = ?
         `;
         const totalCreditAmountResult = await queryAsync(creditAmountQuery, [startDate, endDate, zoneId]);
-        const totalCreditAmountByZone = totalCreditAmountResult[0]?.total || 0; //representa lo de una zona
+        const totalCreditAmountByZone = Number(totalCreditAmountResult[0]?.total) || 0; //representa lo de una zona
         totalCreditAmountAllZones += totalCreditAmountByZone; //representa la suma de las zonas
         //console.log('total de creditos dados en la semana por todas las zonas: ', totalCreditAmountAllZones);
       }
@@ -400,7 +399,6 @@ async function getExtras(idZona) {
 //Funcion para guardar el monto extra del formulario en comisiones
 async function saveCommission({ total, description }) {
 
-  console.log('comision dentro del controller: ', total);
   // Validaciones
   if (!description || !description.trim()) {
     throw new Error('La descripción es obligatoria');
@@ -410,8 +408,8 @@ async function saveCommission({ total, description }) {
   }
 
   const insertEgreso = `
-    INSERT INTO caja (tipoMovimiento, categoria, descripcion, monto)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO caja (fecha, tipoMovimiento, categoria, descripcion, monto)
+    VALUES (NOW(), ?, ?, ?, ?)
   `;
   const result = await queryAsync(insertEgreso, ['egreso', 'comision', description, total]);
 
