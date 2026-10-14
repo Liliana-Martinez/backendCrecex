@@ -436,11 +436,7 @@ const obtenerMontoCobrado = async (idZona,startDate,endDate) => {
     SELECT 
       SUM(
         CASE 
-          WHEN p.estado IN (
-            'pagado',
-            'incompleto',
-            'adelantadoIncompleto'
-          )
+          WHEN p.estado IN ('pagado','incompleto','adelantadoIncompleto')
           THEN p.cantidadPagada
           ELSE 0
         END
@@ -468,7 +464,7 @@ const obtenerMontoCobrado = async (idZona,startDate,endDate) => {
           AND p.fechaEsperada >= ?
           AND p.fechaEsperada < ?
         )
-        OR (p.estado IN (atraso','pagadoAtrasado')
+        OR (p.estado IN ('atraso','pagadoAtrasado')
           AND p.fechaPagada >= ?
           AND p.fechaPagada < ?
         )
