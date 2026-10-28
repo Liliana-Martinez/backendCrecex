@@ -183,6 +183,7 @@ async function getTotalCredits(idZona) {
       AND cl.idZona = ?
       AND c.fechaEntrega BETWEEN ? AND ?
   `;
+  console.log('',startDate, endDate)
   const resultNumberCredits = await queryAsync(numberCredits, [idZona, startDate, endDate]);
   const totalCredits = (Number(resultNumberCredits[0]?.totalCredits) || 0) * 100;
 
