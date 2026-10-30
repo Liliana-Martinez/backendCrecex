@@ -322,9 +322,6 @@ const eliminarSemanasExtra = async (
     await queryAsync(query, [idCredito]);
 
 };
-
-
-
 //Cuando cancela el credito
 const cancelCredit = async (req, res) => {
     try {
@@ -369,7 +366,193 @@ const cancelCredit = async (req, res) => {
 };
 
 
+function obtenerSabadoAnterior() {
+  const hoy = new Date();
+  const sabadoAnterior = new Date(hoy);
+  const day = hoy.getDay();
+  const diffToSaturday = day + 1;
+  sabadoAnterior.setDate(
+    hoy.getDate() - diffToSaturday
+  );
+  sabadoAnterior.setHours(0, 0, 0, 0);
+  return sabadoAnterior;
+}
+async function actualizarEstadosAtrasos() {
+    try {
+        const sabadoAnterior = obtenerSabadoAnterior();
+        const fechaStr = sabadoAnterior.toISOString().split('T')[0];
+
+        const query = `
+            UPDATE pagos
+            SET estado = 'atraso'
+            WHERE fechaEsperada = ?
+            AND estado IN ('falla', 'incompleto')
+        `;
+
+        const result = await queryAsync(query, [fechaStr]);
+
+        const affectedRows = result?.affectedRows || 0;
+
+        console.log(`Semana ${fechaStr} actualizada a 'atraso'`);
+
+        return {
+            success: true,
+            affectedRows
+        };
+
+    } catch (error) {
+        console.error('Error en actualizarEstadosAtrasos:', error);
+        throw error;
+    }
+}
+
+
+async function actualizarEstadosAdelantos() {
+    try {
+        const hoy = new Date();
+        const sabadoAnterior = new Date(hoy);
+        const day = hoy.getDay();
+        const diffToSaturday = day + 1;
+
+        sabadoAnterior.setDate(
+            hoy.getDate() - diffToSaturday + 7
+        );
+
+        sabadoAnterior.setHours(0, 0, 0, 0);
+
+        const fechaStr = sabadoAnterior.toISOString().split('T')[0];
+
+        // Adelantado a pagado cuando cambia la semana
+        const queryPagado = `
+            UPDATE pagos
+            SET estado = 'pagado',
+                fechaPagada = CURDATE()
+            WHERE fechaEsperada = ?
+            AND estado = 'adelantado'
+        `;
+
+        const resultPagado = await queryAsync(queryPagado, [fechaStr]);
+
+        // Adelantado incompleto a incompleto
+        const queryIncompleto = `
+            UPDATE pagos
+            SET estado = 'incompleto'
+            WHERE fechaEsperada = ?
+            AND estado = 'adelantadoIncompleto'
+        `;
+
+        const resultIncompleto = await queryAsync(queryIncompleto, [fechaStr]);
+
+        console.log(`Semana ${fechaStr} actualizada desde adelantados`);
+
+        return {
+            success: true,
+            pagados: resultPagado?.affectedRows || 0,
+            incompletos: resultIncompleto?.affectedRows || 0
+        };
+
+    } catch (error) {
+        console.error('Error en actualizarEstadosAdelantos:', error);
+        throw error;
+    }
+}
+
+
+async function actualizarEstadosFalla() {
+    try {
+        const sabadoAnterior = obtenerSabadoAnterior();
+        const fechaStr = sabadoAnterior.toISOString().split('T')[0];
+
+        const query = `
+            UPDATE pagos
+            SET estado = 'falla'
+            WHERE fechaEsperada = ?
+            AND (estado = 'pendiente' OR estado = 'incompleto')
+        `;
+
+        const result = await queryAsync(query, [fechaStr]);
+
+        const affectedRows = result?.affectedRows || 0;
+
+        console.log(`Pagos actualizados a falla: ${affectedRows}`);
+        console.log(`Semana ${fechaStr} marcada como falla`);
+
+        return {
+            success: true,
+            affectedRows
+        };
+
+    } catch (error) {
+        console.error('Error general en actualizarEstadosFalla:', error);
+        throw error;
+    }
+}
+const ejecutarAtrasos = async (req, res) => {
+    try {
+        const resultado = await actualizarEstadosAtrasos();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Proceso de atrasos ejecutado correctamente',
+            affectedRows: resultado.affectedRows
+        });
+
+    } catch (error) {
+        console.error('Error al ejecutar atrasos:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Error al ejecutar el proceso de atrasos'
+        });
+    }
+};
+
+
+const ejecutarAdelantos = async (req, res) => {
+    try {
+        const resultado = await actualizarEstadosAdelantos();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Proceso de adelantos ejecutado correctamente',
+            pagados: resultado.pagados,
+            incompletos: resultado.incompletos
+        });
+
+    } catch (error) {
+        console.error('Error al ejecutar adelantos:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Error al ejecutar el proceso de adelantos'
+        });
+    }
+};
+
+
+const ejecutarFalla = async (req, res) => {
+    try {
+        const resultado = await actualizarEstadosFalla();
+
+        return res.status(200).json({
+            success: true,
+            message: 'Proceso de falla ejecutado correctamente',
+            affectedRows: resultado.affectedRows
+        });
+
+    } catch (error) {
+        console.error('Error al ejecutar falla:', error);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Error al ejecutar el proceso de falla'
+        });
+    }
+};
 module.exports = {
     updateCredit,
-    cancelCredit
+    cancelCredit,
+    ejecutarAtrasos,
+    ejecutarAdelantos,
+    ejecutarFalla
 };

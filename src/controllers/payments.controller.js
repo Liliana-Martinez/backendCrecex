@@ -914,110 +914,6 @@ const actualizarCreditoAPagado = async (idCredito) => {
     throw error;
   }
 };
-async function actualizarEstadosAtrasos() {
-  try {
-    const sabadoAnterior =
-      obtenerSabadoAnterior();
-    const fechaStr =
-      sabadoAnterior
-        .toISOString()
-        .split('T')[0];
-    const query = `
-      UPDATE pagos
-      SET estado = 'atraso'
-      WHERE fechaEsperada = ?
-      AND estado IN ('falla','incompleto')
-    `;
-    await queryAsync(query, [fechaStr]);
-    console.log(
-      `Semana ${fechaStr} actualizada a 'atraso'`
-    );
-  } catch (error) {
-    console.error(
-      'Error en actualizarEstadosAtrasos:',
-      error
-    );
-  }
-}
-async function actualizarEstadosAdelantos() {
-  try {
-    const hoy = new Date();
-    const sabadoAnterior =
-      new Date(hoy);
-    const day = hoy.getDay();
-    const diffToSaturday =
-      day + 1;
-    sabadoAnterior.setDate(
-      hoy.getDate() - diffToSaturday + 7
-    );
-    sabadoAnterior.setHours(0,0,0,0);
-    const fechaStr =
-      sabadoAnterior
-        .toISOString()
-        .split('T')[0];
-    //Ad a Pagado, cuando cambia semana
-    const queryPagado = `
-      UPDATE pagos
-      SET estado = 'pagado',
-          fechaPagada = CURDATE()
-      WHERE fechaEsperada = ?
-      AND estado = 'adelantado'
-    `;
-    await queryAsync(queryPagado, [
-      fechaStr
-    ]);
-    //Incompleto a Atraso cuando cambia semana
-    const queryIncompleto = `
-      UPDATE pagos
-      SET estado = 'incompleto'
-      WHERE fechaEsperada = ?
-      AND estado = 'adelantadoIncompleto'
-    `;
-    await queryAsync(queryIncompleto, [
-      fechaStr
-    ]);
-    console.log(
-      `Semana ${fechaStr} actualizada desde adelantados`
-    );
-  } catch (error) {
-    console.error(
-      'Error en actualizarEstadosAdelantos:',
-      error
-    );
-  }
-
-}
-async function actualizarEstadosFalla() {
-  try {
-    const sabadoAnterior =
-      obtenerSabadoAnterior();
-    const fechaStr =
-      sabadoAnterior
-        .toISOString()
-        .split('T')[0];
-    const query = `
-      UPDATE pagos
-      SET estado = 'falla'
-      WHERE fechaEsperada = ?
-      AND (estado = 'pendiente'OR estado = 'incompleto')
-    `;
-    const result =
-      await queryAsync(query, [fechaStr]);
-    const affectedRows =
-      result?.affectedRows || 0;
-    console.log(
-      `Pagos actualizados a falla: ${affectedRows}`
-    );
-    console.log(
-      `Semana ${fechaStr} marcada como falla`
-    );
-  } catch (error) {
-    console.error(
-      'Error general en actualizarEstadosFalla:',
-      error
-    );
-  }
-}
 //Se actualiza la clasificacion de los creditos cada pago que den
 const actualizarClasificacionCredito = async (idCredito) => {
   try {
@@ -1414,9 +1310,6 @@ module.exports = {
   registrarPagos,
   actualizarPago,
   actualizarCreditoAPagado,
-  actualizarEstadosAtrasos,
-  actualizarEstadosAdelantos,
-  actualizarEstadosFalla,
   actualizarClasificacionCredito,
   asignarPuntosPorCumplimiento,
   procesarCreditosVencidos
